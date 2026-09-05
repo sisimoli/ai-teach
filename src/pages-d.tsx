@@ -41,8 +41,8 @@ const fa2 = (n: number) => `${FA[Math.floor(n / 10)] ?? ""}${FA[n % 10]}`;
 
 export function AudienceValuePage() {
   return (
-    <Sheet id="audience" num="۱۱" title="مخاطبان و ارزش">
-      <Tag num="۱۱" en="AUDIENCE & VALUE" title="برای چه کسانی، با چه ارزشی؟" />
+    <Sheet id="audience" num="۱۰" title="مخاطبان و ارزش">
+      <Tag num="۱۰" en="AUDIENCE & VALUE" title="برای چه کسانی، با چه ارزشی؟" />
 
       <div className="mt-10 grid lg:grid-cols-12 gap-10 lg:gap-14">
         <div className="lg:col-span-6">
@@ -109,8 +109,8 @@ const OLD_FLOW = [
 
 export function ShiftPage() {
   return (
-    <Sheet id="shift" num="۱۲" title="از گزارش تا تصمیم">
-      <Tag num="۱۲" en="THE SHIFT" title="از «گزارش» به «سیستم تصمیم‌گیری»" />
+    <Sheet id="shift" num="۱۱" title="از گزارش تا تصمیم">
+      <Tag num="۱۱" en="THE SHIFT" title="از «گزارش» به «سیستم تصمیم‌گیری»" />
 
       <div className="mt-10 space-y-6">
         {/* old model */}
@@ -192,16 +192,15 @@ const GLANCE = [
   { domain: "تحول دیجیتال", cap: "ارزیابی بلوغ و شناسایی شکاف‌ها" },
   { domain: "هوش مصنوعی", cap: "ارزیابی آمادگی و شناسایی فرصت‌های AI" },
   { domain: "اجرا", cap: "مدیریت و پایش ابتکارات استراتژیک" },
-  { domain: "تعامل", cap: "تحلیل و پاسخ‌گویی هوشمند به مسائل مدیریتی" },
 ];
 
 export function OverviewPage() {
   return (
-    <Sheet id="overview" num="۱۳" title="در یک نگاه">
-      <Tag num="۱۳" en="AT A GLANCE" title="APEXTRA در یک نگاه" />
+    <Sheet id="overview" num="۱۲" title="در یک نگاه">
+      <Tag num="۱۲" en="AT A GLANCE" title="APEXTRA در یک نگاه" />
       <Reveal delay={120}>
         <p className="mt-5 max-w-2xl text-mist text-[14.5px] leading-8">
-          ده حوزه، یک پلتفرم — جدول زیر نقشه کامل قابلیت‌های APEXTRA را در یک نگاه نشان می‌دهد.
+          نه حوزه، یک پلتفرم — جدول زیر نقشه کامل قابلیت‌های APEXTRA را در یک نگاه نشان می‌دهد.
         </p>
       </Reveal>
 
@@ -243,11 +242,11 @@ const QUESTIONS = [
 
 export function ForwardPage() {
   return (
-    <Sheet id="forward" num="۱۴" title="یک قدم جلوتر">
+    <Sheet id="forward" num="۱۳" title="یک قدم جلوتر">
       <div className="grid lg:grid-cols-12 gap-10 lg:gap-14">
         <div className="lg:col-span-5">
           <div className="lg:sticky lg:top-28">
-            <Tag num="۱۴" en="ONE STEP AHEAD" title="یک قدم جلوتر از امروز" />
+            <Tag num="۱۳" en="ONE STEP AHEAD" title="یک قدم جلوتر از امروز" />
             <Reveal delay={150}>
               <p className="mt-6 text-mist text-[15px] leading-9">
                 سازمان‌های موفق فقط به این فکر نمی‌کنند که
@@ -306,7 +305,7 @@ export function FinalPage() {
   const imperatives = ["تحلیل کنید.", "آینده را بسازید.", "استراتژی را اجرا کنید."];
 
   return (
-    <Sheet id="final" bare tone="dark" num="۱۵">
+    <Sheet id="final" bare tone="dark" num="۱۴">
       <div className="relative">
         <span
           aria-hidden="true"
@@ -323,7 +322,7 @@ export function FinalPage() {
               </span>
               <span className="font-latin font-bold tracking-[0.32em] text-[15px] text-slate-100">APEXTRA</span>
             </div>
-            <span className="font-latin text-[10px] tracking-[0.3em] text-slate-500">CLOSING — PAGE 15 / 15</span>
+            <span className="font-latin text-[10px] tracking-[0.3em] text-slate-500">CLOSING — PAGE 14 / 14</span>
           </div>
         </Reveal>
 

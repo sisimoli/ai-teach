@@ -224,6 +224,22 @@ export const IconDoc = (p: IconProps) => (
   </I>
 );
 
+export const IconDownload = (p: IconProps) => (
+  <I {...p}>
+    <path d="M12 3v11" />
+    <path d="M7.5 10.5L12 15l4.5-4.5" />
+    <path d="M4 17.5V20h16v-2.5" />
+  </I>
+);
+
+export const IconFilePdf = (p: IconProps) => (
+  <I {...p}>
+    <path d="M6.5 2.5h7.5l4.5 4.5V21.5h-12z" />
+    <path d="M14 2.5V7h4.5" />
+    <path d="M9 12.5h6M9 15.5h6M9 18.5h4" />
+  </I>
+);
+
 export const IconX = (p: IconProps) => (
   <I {...p}>
     <path d="M6 6l12 12M18 6L6 18" />

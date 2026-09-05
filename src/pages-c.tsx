@@ -1,9 +1,8 @@
 import type { CSSProperties } from "react";
-import { Cap, Chain, Chip, CornerTicks, Li, OWL_FACE, Owl, Sheet, Tag } from "./chrome";
+import { Cap, Chain, Chip, CornerTicks, Li, Sheet, Tag } from "./chrome";
 import { faNum, Reveal } from "./lib";
 import {
   IconArrowLeft,
-  IconChat,
   IconChip,
   IconFlag,
   IconGauge,
@@ -285,119 +284,4 @@ export function ExecutionPage() {
   );
 }
 
-/* ================================================================
-   PAGE 10 — CONVERSATIONAL INTELLIGENCE
-   ================================================================ */
 
-export function DialoguePage() {
-  return (
-    <Sheet id="dialogue" num="۱۰" title="تعامل هوشمند">
-      <Tag num="۱۰" en="CONVERSATIONAL INTELLIGENCE" title="تعامل هوشمند؛ سؤال کنید، تحلیل بگیرید" />
-
-      <div className="mt-10 grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
-        <div className="lg:col-span-5">
-          <Cap num="۱۴" icon={<IconChat className="w-7 h-7" />} title="تعامل هوشمند">
-            <p>
-              در APEXTRA تعامل با سیستم به شکل طبیعی و مبتنی بر زبان انسانی انجام می‌شود. مدیر یا
-              کارشناس می‌تواند مسئله یا سؤال استراتژیک خود را مطرح کند و سیستم بر اساس اطلاعات و
-              چارچوب‌های مرتبط،
-              <span className="text-ink font-bold"> تحلیل ساختاریافته </span>
-              ارائه دهد.
-            </p>
-          </Cap>
-          <Reveal delay={200}>
-            <div className="relative mt-8 border border-navy-700 bg-navy-900 p-6 md:p-7">
-              <CornerTicks />
-              <div className="font-latin text-[10px] tracking-[0.28em] text-slate-500">INSTEAD OF</div>
-              <p className="mt-2 text-slate-400 text-[14px] leading-8">به‌جای جست‌وجوی میان ده‌ها گزارش...</p>
-              <div className="my-4 h-px bg-navy-700" />
-              <div className="font-latin text-[10px] tracking-[0.28em] text-teal-400">JUST ASK</div>
-              <p className="mt-2 font-display font-extrabold text-slate-100 text-xl md:text-2xl leading-10">
-                سؤال خود را مطرح کنید.
-              </p>
-            </div>
-          </Reveal>
-        </div>
-
-        {/* chat mock */}
-        <div className="lg:col-span-7">
-          <Reveal delay={160} y={32}>
-            <div className="relative border border-navy-700 bg-navy-900 shadow-[0_30px_70px_-30px_rgba(2,8,20,0.9)]">
-              <CornerTicks />
-              <div className="flex items-center justify-between gap-4 border-b border-navy-700 px-5 py-3.5">
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 border border-navy-700 bg-navy-850 flex items-center justify-center overflow-hidden">
-                    <Owl src={OWL_FACE} alt="" className="w-6 h-6 object-contain" />
-                  </span>
-                  <div>
-                    <div className="text-slate-100 text-[13px] font-bold font-display">دستیار استراتژی APEXTRA</div>
-                    <div className="flex items-center gap-1.5 text-[10.5px] text-slate-500 mt-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-teal-400 pulse-dot text-teal-400" />
-                      تحلیل زنده بر اساس چارچوب‌های استراتژیک
-                    </div>
-                  </div>
-                </div>
-                <span className="font-latin text-[9.5px] tracking-[0.25em] text-teal-400 border border-teal-500/40 px-2 py-1">
-                  SCENARIO MODE
-                </span>
-              </div>
-
-              <div className="px-5 py-6 space-y-5 min-h-[300px]">
-                <Reveal delay={250}>
-                  <div className="max-w-[85%] ms-auto">
-                    <div className="text-[10px] text-slate-500 mb-1.5 text-left">مدیر استراتژی</div>
-                    <div className="border border-navy-600 bg-navy-800 px-4 py-3 text-slate-200 text-[13.5px] leading-7">
-                      اگر رقیب اصلی قیمت‌ها را ۱۵٪ کاهش دهد، چه گزینه‌هایی پیش رو داریم؟
-                    </div>
-                  </div>
-                </Reveal>
-
-                {[
-                  { tag: "تحلیل", text: "سه سناریوی محتمل بر اساس داده‌های بازار، ساختار هزینه و رفتار تاریخی رقبا شناسایی شد." },
-                  { tag: "سناریو", text: "سناریوی A: حفظ قیمت و تقویت تمایز — سناریوی B: کاهش قیمت هدفمند در بخش‌های حساس — سناریوی C: پاسخ ترکیبی با بسته‌های ارزش." },
-                  { tag: "پیشنهاد", text: "پیش از تصمیم، کشش قیمتی بازار و واکنش احتمالی سایر رقبا در هر سناریو شبیه‌سازی شود." },
-                ].map((m, i) => (
-                  <Reveal key={m.tag} delay={420 + i * 260}>
-                    <div className="max-w-[92%] me-auto">
-                      <div className="text-[10px] text-teal-400 mb-1.5 font-latin tracking-[0.2em]">APEXTRA</div>
-                      <div className="border border-navy-700 border-s-2 border-s-teal-500 bg-navy-850 px-4 py-3">
-                        <span className="inline-block border border-teal-500/40 text-teal-300 text-[10.5px] px-2 py-0.5 mb-2 font-semibold">
-                          {m.tag}
-                        </span>
-                        <p className="text-slate-300 text-[13px] leading-7">{m.text}</p>
-                      </div>
-                    </div>
-                  </Reveal>
-                ))}
-
-                <Reveal delay={1250}>
-                  <div className="flex items-center gap-2.5 pt-1">
-                    <span className="flex gap-1">
-                      <span className="tdot w-1.5 h-1.5 rounded-full bg-teal-400 inline-block" />
-                      <span className="tdot w-1.5 h-1.5 rounded-full bg-teal-400 inline-block" />
-                      <span className="tdot w-1.5 h-1.5 rounded-full bg-teal-400 inline-block" />
-                    </span>
-                    <span className="text-[11px] text-slate-500">در حال به‌روزرسانی سناریوها با داده‌های جدید...</span>
-                  </div>
-                </Reveal>
-              </div>
-
-              <div className="border-t border-navy-700 px-5 py-3.5 flex items-center justify-between gap-4">
-                <span className="text-slate-500 text-[12.5px]">سؤال استراتژیک خود را بنویسید...</span>
-                <span className="w-9 h-9 border border-teal-500/50 text-teal-400 flex items-center justify-center shrink-0 hover:bg-teal-500/10 transition-colors cursor-pointer">
-                  <IconArrowLeft className="w-4 h-4 rotate-180" />
-                </span>
-              </div>
-            </div>
-          </Reveal>
-          <Reveal delay={300}>
-            <p className="mt-5 text-[11.5px] text-mist leading-6">
-              * نمایش شماتیک از شیوه تعامل با پلتفرم — پاسخ‌ها بر اساس داده‌ها و چارچوب‌های تحلیل
-              استراتژیک سازمان تولید می‌شوند.
-            </p>
-          </Reveal>
-        </div>
-      </div>
-    </Sheet>
-  );
-}

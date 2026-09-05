@@ -1,6 +1,7 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { IconArrowLeft, IconCheck, IconOwlMark } from "./icons";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { IconArrowLeft, IconCheck, IconDownload, IconFilePdf, IconOwlMark } from "./icons";
 import { Reveal } from "./lib";
+import { exportHtmlFile, exportPdfViaPrint } from "./exporter";
 
 /* ================= page registry ================= */
 
@@ -16,12 +17,11 @@ export const PAGES: PageMeta[] = [
   { id: "ai", num: "۰۷", label: "آمادگی هوش مصنوعی", en: "AI READINESS" },
   { id: "maturity", num: "۰۸", label: "بلوغ دیجیتال", en: "DIGITAL MATURITY" },
   { id: "execution", num: "۰۹", label: "اجرا و پایش", en: "EXECUTION" },
-  { id: "dialogue", num: "۱۰", label: "تعامل هوشمند", en: "CONVERSATIONAL" },
-  { id: "audience", num: "۱۱", label: "مخاطبان و ارزش", en: "AUDIENCE & VALUE" },
-  { id: "shift", num: "۱۲", label: "از گزارش تا تصمیم", en: "THE SHIFT" },
-  { id: "overview", num: "۱۳", label: "در یک نگاه", en: "AT A GLANCE" },
-  { id: "forward", num: "۱۴", label: "یک قدم جلوتر", en: "ONE STEP AHEAD" },
-  { id: "final", num: "۱۵", label: "پایان", en: "CLOSING" },
+  { id: "audience", num: "۱۰", label: "مخاطبان و ارزش", en: "AUDIENCE & VALUE" },
+  { id: "shift", num: "۱۱", label: "از گزارش تا تصمیم", en: "THE SHIFT" },
+  { id: "overview", num: "۱۲", label: "در یک نگاه", en: "AT A GLANCE" },
+  { id: "forward", num: "۱۳", label: "یک قدم جلوتر", en: "ONE STEP AHEAD" },
+  { id: "final", num: "۱۴", label: "پایان", en: "CLOSING" },
 ];
 
 export const OWL_HERO = "https://apextra.ai/brand/owl-hero.webp";
@@ -63,7 +63,7 @@ export function Owl({
 
 export function AppBackground() {
   return (
-    <div className="fixed inset-0 -z-10 overflow-hidden bg-navy-950" aria-hidden="true">
+    <div className="fixed inset-0 -z-10 overflow-hidden bg-navy-950 print-hide" aria-hidden="true">
       <div
         className="absolute inset-0"
         style={{
@@ -113,6 +113,9 @@ export function CornerTicks({ tone = "teal" }: { tone?: "teal" | "slate" }) {
 
 export function TopBar({ active, progress }: { active: string; progress: number }) {
   const [open, setOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
@@ -120,25 +123,64 @@ export function TopBar({ active, progress }: { active: string; progress: number 
     return () => document.removeEventListener("click", close);
   }, [open]);
 
-  return (
-    <header className="fixed top-0 inset-x-0 z-50">
-      <div className="bg-navy-950/90 backdrop-blur-md border-b border-navy-800">
-        <div className="mx-auto w-[min(100%-1.5rem,1180px)] h-16 flex items-center justify-between gap-3">
-          <a href="#cover" className="flex items-center gap-3 min-w-0">
-            <span className="w-9 h-9 shrink-0 border border-navy-700 flex items-center justify-center overflow-hidden bg-navy-900">
-              <Owl src={OWL_FACE} alt="APEXTRA owl" className="w-7 h-7 object-contain" />
-            </span>
-            <span className="font-latin font-bold tracking-[0.3em] text-[15px] text-slate-100">
-              APEXTRA
-            </span>
-            <span className="hidden md:block h-4 w-px bg-navy-700 shrink-0" />
-            <span className="hidden md:block text-[11.5px] text-slate-400 truncate">
-              پلتفرم مدیریت استراتژیک سازمانی
-            </span>
-          </a>
+  const showToast = (msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 4200);
+  };
 
-          <div className="flex items-center gap-2.5">
-            <div className="relative">
+  const handleHtml = async () => {
+    showToast("در حال آماده‌سازی فایل HTML...");
+    try {
+      await exportHtmlFile();
+      showToast("فایل apextra-brochure.html با موفقیت دانلود شد.");
+    } catch {
+      showToast("خطا در ساخت فایل — دوباره تلاش کنید.");
+    }
+  };
+
+  const handlePdf = () => {
+    showToast("در پنجره چاپ، مقصد را روی «Save as PDF» قرار دهید.");
+    window.setTimeout(() => exportPdfViaPrint(), 300);
+  };
+
+  return (
+    <>
+      <Toast msg={toast} />
+      <header className="fixed top-0 inset-x-0 z-50 print-hide">
+        <div className="bg-navy-950/90 backdrop-blur-md border-b border-navy-800">
+          <div className="mx-auto w-[min(100%-1.5rem,1180px)] h-16 flex items-center justify-between gap-3">
+            <a href="#cover" className="flex items-center gap-3 min-w-0">
+              <span className="w-9 h-9 shrink-0 border border-navy-700 flex items-center justify-center overflow-hidden bg-navy-900">
+                <Owl src={OWL_FACE} alt="APEXTRA owl" className="w-7 h-7 object-contain" />
+              </span>
+              <span className="font-latin font-bold tracking-[0.3em] text-[15px] text-slate-100">
+                APEXTRA
+              </span>
+              <span className="hidden xl:block h-4 w-px bg-navy-700 shrink-0" />
+              <span className="hidden xl:block text-[11.5px] text-slate-400 truncate">
+                پلتفرم مدیریت استراتژیک سازمانی
+              </span>
+            </a>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleHtml}
+                className="hidden sm:flex items-center gap-1.5 border border-navy-700 text-slate-300 px-2.5 py-1.5 text-[11px] transition-colors hover:border-teal-600 hover:text-teal-300"
+                title="دانلود بروشور به‌صورت یک فایل HTML مستقل"
+              >
+                <IconDownload className="w-3.5 h-3.5" />
+                دانلود HTML
+              </button>
+              <button
+                onClick={handlePdf}
+                className="flex items-center gap-1.5 border border-teal-500/60 text-teal-300 px-2.5 py-1.5 text-[11px] transition-colors hover:bg-teal-500/15 hover:text-teal-200"
+                title="خروجی PDF از طریق پنجره چاپ"
+              >
+                <IconFilePdf className="w-3.5 h-3.5" />
+                خروجی PDF
+              </button>
+              <div className="relative">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -191,13 +233,32 @@ export function TopBar({ active, progress }: { active: string; progress: number 
           </div>
         </div>
       </div>
-      <div className="h-[2px] bg-navy-800/80">
-        <div
-          className="h-full bg-teal-500 transition-[width] duration-200 ease-out"
-          style={{ width: `${progress * 100}%` }}
-        />
+        <div className="h-[2px] bg-navy-800/80">
+          <div
+            className="h-full bg-teal-500 transition-[width] duration-200 ease-out"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
+      </header>
+    </>
+  );
+}
+
+/* ================= toast ================= */
+
+export function Toast({ msg }: { msg: string | null }) {
+  if (!msg) return null;
+  return (
+    <div
+      data-toast
+      className="print-hide fixed bottom-6 inset-x-0 z-[70] flex justify-center px-4 pointer-events-none"
+      role="status"
+    >
+      <div className="toast-in bg-navy-900 border border-teal-500/50 text-slate-100 text-[13px] leading-6 px-5 py-3 shadow-[0_20px_50px_-12px_rgba(2,8,20,0.9)] flex items-center gap-3">
+        <span className="w-1.5 h-1.5 rounded-full bg-teal-400 pulse-dot text-teal-400 shrink-0" />
+        {msg}
       </div>
-    </header>
+    </div>
   );
 }
 
@@ -206,7 +267,7 @@ export function TopBar({ active, progress }: { active: string; progress: number 
 export function IndexRail({ active }: { active: string }) {
   return (
     <nav
-      className="fixed left-3 xl:left-6 top-1/2 -translate-y-1/2 z-40 hidden lg:flex flex-col items-center gap-[7px]"
+      className="fixed left-3 xl:left-6 top-1/2 -translate-y-1/2 z-40 hidden lg:flex flex-col items-center gap-[7px] print-hide"
       aria-label="فهرست صفحات"
     >
       {PAGES.map((p) => (
