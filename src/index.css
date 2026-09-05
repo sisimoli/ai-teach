@@ -108,6 +108,12 @@ body {
 .spin-rev { animation: spinsl 140s linear infinite reverse; transform-origin: 50% 50%; }
 @keyframes spinsl { to { transform: rotate(360deg); } }
 
+.cycle-dash {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: spinsl 90s linear infinite;
+}
+
 .radar-sweep {
   transform-box: view-box;
   transform-origin: 50% 50%;
@@ -175,6 +181,13 @@ body {
 .caret { animation: caretblink 1s steps(1) infinite; }
 @keyframes caretblink { 50% { opacity: 0; } }
 
+/* ---------- fixed A4-landscape frame (brochure pages) ---------- */
+@media (min-width: 1200px) {
+  .a4-frame {
+    height: 834px; /* 1180px × 210/297 — exact A4 landscape ratio */
+  }
+}
+
 /* ---------- toast entrance ---------- */
 .toast-in {
   animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -190,18 +203,22 @@ body {
   }
 }
 
-/* ---------- print / PDF export ---------- */
+/* ---------- print / PDF export ----------
+   Each brochure sheet is a fixed 1180×834 box (A4 landscape ratio).
+   In print we zoom it to 0.84 → 991×700px, which safely fits inside the
+   printable area of A4 landscape even with default browser margins,
+   so every sheet lands on exactly one A4 page. */
 @media print {
   @page {
     size: A4 landscape;
-    margin: 7mm;
+    margin: 6mm;
   }
 
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    animation-duration: 0s !important;
-    animation-iteration-count: 1 !important;
+    animation: none !important;
+    transition: none !important;
   }
 
   html,
@@ -213,15 +230,24 @@ body {
     display: none !important;
   }
 
-  section[id] {
+  main > section[id] {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
     break-after: page;
-    scroll-margin: 0;
+    break-inside: avoid;
   }
 
-  section[id] > div {
+  main > section[id]:last-child {
+    break-after: auto;
+  }
+
+  .a4-frame {
+    width: 1180px !important;
+    height: 834px !important;
+    overflow: hidden !important;
+    zoom: 0.84;
+    margin: 0 auto;
     box-shadow: none !important;
   }
 
@@ -232,17 +258,11 @@ body {
   }
 
   .draw-path {
-    animation: none !important;
     stroke-dashoffset: var(--off, 0) !important;
   }
 
-  .breathe,
-  .spin-slower,
-  .spin-rev,
-  .radar-sweep,
-  .gauge-arc,
   .gauge-needle {
-    animation: none !important;
+    transform: rotate(var(--rot, 21.6deg)) !important;
   }
 
   a {
@@ -254,7 +274,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .rv { opacity: 1 !important; transform: none !important; transition: none !important; }
-  .flow-dash, .flow-dash-muted, .spin-slower, .spin-rev, .radar-sweep, .breathe,
+  .flow-dash, .flow-dash-muted, .spin-slower, .spin-rev, .cycle-dash, .radar-sweep, .breathe,
   .tdot, .pulse-dot::after, .caret { animation: none !important; }
   .draw-path { stroke-dashoffset: 0 !important; animation: none !important; }
   .gauge-arc { transition: none !important; stroke-dashoffset: var(--off, 100) !important; }
