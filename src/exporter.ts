@@ -1,9 +1,11 @@
+import html2canvas from "html2canvas-pro";
+import { jsPDF } from "jspdf";
+
 /**
- * Serializes the rendered brochure into a single self-contained HTML file.
- * - Inlines every linked stylesheet (styles become part of the file)
- * - Embeds all reachable images as base64 data-URIs (logo, owl, …)
- * - Removes all scripts (the document is static — no React needed)
- * - Forces every scroll-reveal element into its visible state
+ * Export toolkit for the brochure:
+ * - exportHtmlFile: one self-contained static HTML file (styles inlined, images embedded)
+ * - exportRealPdf:  a real PDF whose page size equals the on-screen sheet size —
+ *                   full-bleed, no browser margins, borders never clipped
  */
 export type ExportResult = { embedded: number; failed: number };
 
@@ -16,59 +18,77 @@ function toDataURL(blob: Blob): Promise<string> {
   });
 }
 
+/** Fetches every image once and returns a map of src → base64 data URL. */
+async function collectImageDataUrls(root: Document | HTMLElement): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const imgs = Array.from(root.querySelectorAll("img"));
+  const unique = Array.from(new Set(imgs.map((i) => i.src).filter(Boolean)));
+  await Promise.all(
+    unique.map(async (src) => {
+      try {
+        const res = await fetch(src, { mode: "cors" });
+        if (!res.ok) return;
+        map.set(src, await toDataURL(await res.blob()));
+      } catch {
+        /* keep remote reference */
+      }
+    })
+  );
+  return map;
+}
+
+/** Forces reveal/animated elements into their final visible state. */
+function finalizeVisuals(root: Document | HTMLElement, dataUrls?: Map<string, string>) {
+  root.querySelectorAll(".rv").forEach((el) => {
+    el.classList.add("in");
+    (el as HTMLElement).style.removeProperty("transition-delay");
+  });
+  root.querySelectorAll(".draw-path").forEach((el) => {
+    const e = el as HTMLElement;
+    e.style.strokeDashoffset = e.style.getPropertyValue("--off") || "0";
+  });
+  if (dataUrls) {
+    root.querySelectorAll("img").forEach((img) => {
+      const d = dataUrls.get(img.src);
+      if (d) img.src = d;
+    });
+  }
+}
+
+/* ================= single-file HTML export ================= */
+
 export async function exportHtmlFile(filename = "apextra-brochure.html"): Promise<ExportResult> {
   const clone = document.documentElement.cloneNode(true) as HTMLElement;
   const result: ExportResult = { embedded: 0, failed: 0 };
 
-  // 1) no scripts in the exported document
   clone.querySelectorAll("script").forEach((s) => s.remove());
 
-  // 2) inline linked stylesheets
   const links = Array.from(clone.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'));
   for (const link of links) {
     try {
       const res = await fetch(link.href);
       if (!res.ok) continue;
-      const css = await res.text();
       const style = document.createElement("style");
-      style.textContent = css;
+      style.textContent = await res.text();
       link.replaceWith(style);
     } catch {
       /* keep the remote link as a fallback */
     }
   }
 
-  // 3) embed images as base64 so the file works fully offline
+  const dataUrls = await collectImageDataUrls(clone);
+  result.embedded = dataUrls.size;
   const imgs = Array.from(clone.querySelectorAll("img"));
-  await Promise.all(
-    imgs.map(async (img) => {
-      img.removeAttribute("loading");
-      img.removeAttribute("decoding");
-      if (!img.src || img.src.startsWith("data:")) return;
-      try {
-        const res = await fetch(img.src, { mode: "cors" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await res.blob();
-        img.src = await toDataURL(blob);
-        result.embedded += 1;
-      } catch {
-        result.failed += 1; // remote URL is kept as a fallback
-      }
-    })
-  );
-
-  // 4) make sure every reveal/animated element is in its final, visible state
-  clone.querySelectorAll(".rv").forEach((el) => {
-    el.classList.add("in");
-    (el as HTMLElement).style.removeProperty("transition-delay");
-  });
-  clone.querySelectorAll(".draw-path").forEach((el) => {
-    const htmlEl = el as HTMLElement;
-    const target = htmlEl.style.getPropertyValue("--off");
-    htmlEl.style.strokeDashoffset = target || "0";
+  result.failed = imgs.filter((i) => i.src && !dataUrls.has(i.src)).length;
+  imgs.forEach((img) => {
+    img.removeAttribute("loading");
+    img.removeAttribute("decoding");
+    const d = dataUrls.get(img.src);
+    if (d) img.src = d;
   });
 
-  // 5) freeze the progress bar full & clear transient UI state
+  finalizeVisuals(clone);
+
   clone.querySelectorAll<HTMLElement>(".bg-teal-500").forEach((el) => {
     if (el.style.width) el.style.width = "100%";
   });
@@ -89,7 +109,45 @@ export async function exportHtmlFile(filename = "apextra-brochure.html"): Promis
   return result;
 }
 
-/** Opens the browser print dialog — "Save as PDF" produces the PDF version. */
-export function exportPdfViaPrint(): void {
-  window.print();
+/* ================= real PDF export ================= */
+
+export type PdfProgress = (current: number, total: number) => void;
+
+export async function exportRealPdf(
+  opts: { filename?: string; onProgress?: PdfProgress } = {}
+): Promise<void> {
+  const sections = Array.from(document.querySelectorAll<HTMLElement>("section[id]"));
+  const total = sections.length;
+  if (total === 0) throw new Error("no pages");
+
+  const dataUrls = await collectImageDataUrls(document);
+
+  // Page size = exact proportions of the on-screen sheet (1180 × 834 ≈ A4 landscape),
+  // image fills the page edge-to-edge → no browser margins, no clipped borders.
+  const PAGE_W = 297;
+  const PAGE_H = Math.round(PAGE_W * (834 / 1180) * 100) / 100; // ≈ 209.92mm
+
+  let pdf: jsPDF | null = null;
+
+  for (let i = 0; i < total; i++) {
+    opts.onProgress?.(i + 1, total);
+    const canvas = await html2canvas(sections[i], {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: null,
+      onclone: (doc) => finalizeVisuals(doc, dataUrls),
+    });
+    const jpeg = canvas.toDataURL("image/jpeg", 0.93);
+    canvas.width = 0; // free memory between pages
+
+    if (!pdf) {
+      pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [PAGE_W, PAGE_H], compress: true });
+    } else {
+      pdf.addPage([PAGE_W, PAGE_H], "landscape");
+    }
+    pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_W, PAGE_H);
+  }
+
+  pdf?.save(opts.filename ?? "apextra-brochure.pdf");
 }

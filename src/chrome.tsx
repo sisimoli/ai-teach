@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { IconArrowLeft, IconCheck, IconDownload, IconFilePdf, IconOwlMark } from "./icons";
-import { Reveal } from "./lib";
-import { exportHtmlFile, exportPdfViaPrint } from "./exporter";
+import { faNum, Reveal } from "./lib";
 
 /* ================= page registry ================= */
 
@@ -135,6 +134,7 @@ export function TopBar({ active, progress }: { active: string; progress: number 
   const handleHtml = async () => {
     setBusy("html");
     try {
+      const { exportHtmlFile } = await import("./exporter");
       const res = await exportHtmlFile("apextra-brochure.html");
       showToast(
         res.failed > 0
@@ -148,13 +148,24 @@ export function TopBar({ active, progress }: { active: string; progress: number 
     }
   };
 
-  const handlePdf = () => {
+  const [pdfProgress, setPdfProgress] = useState("");
+
+  const handlePdf = async () => {
     setBusy("pdf");
-    showToast("در پنجره چاپ، گزینه «Save as PDF» را انتخاب کنید — هر صفحه بروشور یک صفحه A4 افقی می‌شود.");
-    window.setTimeout(() => {
-      exportPdfViaPrint();
+    setPdfProgress("");
+    try {
+      const { exportRealPdf } = await import("./exporter");
+      await exportRealPdf({
+        filename: "apextra-brochure.pdf",
+        onProgress: (i: number, t: number) => setPdfProgress(`صفحه ${faNum(i)} از ${faNum(t)}`),
+      });
+      showToast("فایل PDF ساخته و دانلود شد — هر صفحه دقیقاً هم‌اندازه صفحات بروشور است.");
+    } catch {
+      showToast("خطا در ساخت PDF. دوباره تلاش کنید.");
+    } finally {
       setBusy(null);
-    }, 350);
+      setPdfProgress("");
+    }
   };
 
   const btnBase =
@@ -191,14 +202,14 @@ export function TopBar({ active, progress }: { active: string; progress: number 
                 onClick={handlePdf}
                 disabled={busy !== null}
                 className={`${btnBase} border-teal-500/60 text-teal-300 hover:bg-teal-500/15 hover:text-teal-200`}
-                title="خروجی PDF — هر صفحه بروشور، یک صفحه A4 افقی"
+                title="ساخت فایل PDF — هر صفحه دقیقاً هم‌اندازه صفحات بروشور، بدون حاشیه و برش"
               >
                 {busy === "pdf" ? (
                   <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <IconFilePdf className="w-3.5 h-3.5" />
                 )}
-                <span className="hidden sm:inline">خروجی PDF</span>
+                <span className="hidden sm:inline">{busy === "pdf" ? pdfProgress || "در حال ساخت PDF..." : "خروجی PDF"}</span>
               </button>
 
               <div className="relative">
