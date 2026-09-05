@@ -1,1 +1,188 @@
 @import "tailwindcss";
+
+@theme {
+  --font-display: "Estedad", "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Vazirmatn", "Estedad", ui-sans-serif, system-ui, sans-serif;
+  --font-latin: "Space Grotesk", "Estedad", ui-sans-serif, sans-serif;
+
+  --color-navy-950: #060f1f;
+  --color-navy-900: #0a1930;
+  --color-navy-850: #0d1f3c;
+  --color-navy-800: #122a4e;
+  --color-navy-700: #1b3a67;
+  --color-navy-600: #27497e;
+
+  --color-ink: #15253c;
+  --color-mist: #5e7290;
+  --color-hair: #dfe7f1;
+  --color-paper: #f6f8fc;
+  --color-card: #fcfdff;
+
+  --color-teal-200: #bdeef0;
+  --color-teal-300: #8ce3e6;
+  --color-teal-400: #3fc9cf;
+  --color-teal-500: #14afb6;
+  --color-teal-600: #0e949b;
+  --color-teal-700: #0b767d;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 96px;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-navy-950);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-teal-500);
+  color: #f2feff;
+}
+
+/* ---------- scrollbar ---------- */
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: #0a1930; }
+::-webkit-scrollbar-thumb { background: #1b3a67; border: 2px solid #0a1930; }
+::-webkit-scrollbar-thumb:hover { background: #0e949b; }
+
+/* ---------- ambient grid ---------- */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(96, 140, 200, 0.075) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96, 140, 200, 0.075) 1px, transparent 1px);
+  background-size: 46px 46px;
+}
+
+/* ---------- outlined watermark type ---------- */
+.text-outline {
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(63, 201, 207, 0.16);
+}
+
+/* ---------- scroll reveal ---------- */
+.rv {
+  opacity: 0;
+  transform: translateY(var(--rvy, 26px));
+  transition:
+    opacity 0.8s ease,
+    transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--rvd, 0ms);
+  will-change: opacity, transform;
+}
+.rv.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- animated dashed flow line (RTL: moves leftward) ---------- */
+.flow-dash {
+  height: 2px;
+  min-width: 24px;
+  background-image: repeating-linear-gradient(
+    to left,
+    var(--color-teal-500) 0 7px,
+    transparent 7px 14px
+  );
+  animation: dashmove 0.9s linear infinite;
+}
+.flow-dash-muted {
+  background-image: repeating-linear-gradient(
+    to left,
+    rgba(94, 114, 144, 0.55) 0 5px,
+    transparent 5px 11px
+  );
+  animation-duration: 1.6s;
+}
+@keyframes dashmove {
+  to { background-position-x: -14px; }
+}
+
+/* ---------- rotating elements ---------- */
+.spin-slower { animation: spinsl 90s linear infinite; transform-origin: 50% 50%; }
+.spin-rev { animation: spinsl 140s linear infinite reverse; transform-origin: 50% 50%; }
+@keyframes spinsl { to { transform: rotate(360deg); } }
+
+.radar-sweep {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: spinsl 5.5s linear infinite;
+}
+
+/* ---------- image breathing ---------- */
+.breathe { animation: breathe 16s ease-in-out infinite; }
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.055); }
+}
+
+/* ---------- pulsing status dot ---------- */
+.pulse-dot { position: relative; }
+.pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 1px solid currentColor;
+  opacity: 0.6;
+  animation: pulsedot 2.2s ease-out infinite;
+}
+@keyframes pulsedot {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  80%, 100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* ---------- typing dots ---------- */
+.tdot { animation: tdot 1.2s ease-in-out infinite; }
+.tdot:nth-child(2) { animation-delay: 0.15s; }
+.tdot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes tdot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ---------- svg line draw on reveal ---------- */
+.draw-path {
+  stroke-dasharray: var(--len, 600);
+  stroke-dashoffset: var(--len, 600);
+}
+.in .draw-path {
+  animation: drawpath 1.8s cubic-bezier(0.5, 0, 0.2, 1) 0.35s forwards;
+}
+@keyframes drawpath { to { stroke-dashoffset: 0; } }
+
+/* ---------- gauge ---------- */
+.gauge-arc {
+  stroke-dasharray: var(--len, 252);
+  stroke-dashoffset: var(--len, 252);
+  transition: stroke-dashoffset 1.8s cubic-bezier(0.5, 0, 0.2, 1) 0.4s;
+}
+.in .gauge-arc { stroke-dashoffset: var(--off, 100); }
+.gauge-needle {
+  transform: rotate(-90deg);
+  transform-box: view-box;
+  transform-origin: 50% 100%;
+  transition: transform 1.8s cubic-bezier(0.5, 0, 0.2, 1) 0.4s;
+}
+.in .gauge-needle { transform: rotate(var(--rot, 20deg)); }
+
+/* ---------- blink caret ---------- */
+.caret { animation: caretblink 1s steps(1) infinite; }
+@keyframes caretblink { 50% { opacity: 0; } }
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .rv { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .flow-dash, .flow-dash-muted, .spin-slower, .spin-rev, .radar-sweep, .breathe,
+  .tdot, .pulse-dot::after, .caret { animation: none !important; }
+  .draw-path { stroke-dashoffset: 0 !important; animation: none !important; }
+  .gauge-arc { transition: none !important; stroke-dashoffset: var(--off, 100) !important; }
+  .gauge-needle { transition: none !important; transform: rotate(var(--rot, 20deg)) !important; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}
