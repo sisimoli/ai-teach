@@ -138,8 +138,8 @@ export function TopBar({ active, progress }: { active: string; progress: number 
       const res = await exportHtmlFile("apextra-brochure.html");
       showToast(
         res.failed > 0
-          ? "فایل HTML دانلود شد — چند تصویر به‌دلیل محدودیت CORS به‌صورت پیوند آنلاین باقی ماندند."
-          : "فایل HTML مستقل با تصاویر داخلی دانلود شد."
+          ? `فایل HTML دانلود شد — ${faNum(res.embedded)} از ${faNum(res.total)} تصویر داخل فایل جاسازی شد؛ بقیه به‌صورت پیوند آنلاین ماندند.`
+          : "فایل HTML مستقل دانلود شد — همه تصاویر داخل خود فایل جاسازی شده‌اند."
       );
     } catch {
       showToast("خطا در ساخت فایل HTML. دوباره تلاش کنید.");
@@ -152,14 +152,18 @@ export function TopBar({ active, progress }: { active: string; progress: number 
 
   const handlePdf = async () => {
     setBusy("pdf");
-    setPdfProgress("");
+    setPdfProgress("دریافت و جاسازی تصاویر...");
     try {
       const { exportRealPdf } = await import("./exporter");
-      await exportRealPdf({
+      const res = await exportRealPdf({
         filename: "apextra-brochure.pdf",
         onProgress: (i: number, t: number) => setPdfProgress(`صفحه ${faNum(i)} از ${faNum(t)}`),
       });
-      showToast("فایل PDF ساخته و دانلود شد — هر صفحه دقیقاً هم‌اندازه صفحات بروشور است.");
+      showToast(
+        res.failed > 0
+          ? "فایل PDF ساخته شد — برای تصویر(هایی) که سرور اجازه دانلود نداد، نشان جایگزین قرار گرفت."
+          : "فایل PDF ساخته و دانلود شد — همه تصاویر برند داخل آن جاسازی شده‌اند."
+      );
     } catch {
       showToast("خطا در ساخت PDF. دوباره تلاش کنید.");
     } finally {

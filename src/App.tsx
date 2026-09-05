@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { AppBackground, IndexRail, PAGES, TopBar } from "./chrome";
 import { useActiveSection, useScrollProgress } from "./lib";
 import { CoverPage, PlatformPage, WhyPage } from "./pages-a";
@@ -16,6 +17,14 @@ const IDS = PAGES.map((p) => p.id);
 export default function App() {
   const active = useActiveSection(IDS);
   const progress = useScrollProgress();
+
+  // pre-download brand images in the background so exports embed them instantly
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void import("./exporter").then((m) => m.warmUpImages());
+    }, 1600);
+    return () => window.clearTimeout(t);
+  }, []);
 
   return (
     <div className="min-h-screen pt-[70px] pb-8">
