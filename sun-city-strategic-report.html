@@ -1,0 +1,877 @@
+
+		<!DOCTYPE html>
+		<html lang="en">
+			<head>
+				<meta charset="UTF-8">
+				<meta name="viewport" content="width=device-width, initial-scale=1.0">
+				<style>
+					body {
+						background-color: white; /* Ensure the iframe has a white background */
+					}
+				</style>
+				<script>
+					var Z_CDN_WHITELIST = [
+						'cdn.jsdelivr.net',
+						'cdnjs.cloudflare.com',
+						'cdn.tailwindcss.com',
+						'unpkg.com',
+						'fonts.googleapis.com',
+						'd3js.org',
+						'cdn.babylonjs.com',
+						'html2canvas.hertzen.com',
+						'code.jquery.com',
+						'cdn.datatables.net',
+						'kit.fontawesome.com',
+						'code.createjs.com',
+						'cdn.plot.ly',
+						'fonts.gstatic.com',
+						'www.rgraph.net',
+						'api.mapbox.com',
+						'polyfill.io',
+						'cdn.quilljs.com',
+						'picsum.photos',
+						'esm.sh'
+					];
+
+					function z_isUrlInWhitelist(url) {
+						if (!url || typeof url !== 'string') {
+							return false;
+						}
+						try {
+							const urlObj = new URL(url);
+							const hostname = urlObj.hostname;
+							return Z_CDN_WHITELIST.some(domain => hostname === domain);
+						} catch (e) {
+							return false;
+						}
+					}
+
+						function z_proxyCdnUrl(url) {
+						if (!url || !url.startsWith('http')) {
+							return url;
+						}
+							if (!z_isUrlInWhitelist(url)) {
+							return url;
+						}
+						if (!url.startsWith('https://artifacts-cdn.chatglm.site/')) {
+							return 'https://artifacts-cdn.chatglm.site/' + url;
+						}
+						return url;
+					}
+					
+					// 增强版外部链接拦截 - 适合放在模板字符串中
+					document.addEventListener('click', function (ev) {
+						try {
+							const anchor = ev.target?.closest?.('a[href]') || null;
+							if (!anchor) return;
+
+							let href = anchor.getAttribute('href')?.trim() || '';
+							if (!href) return;
+
+							if (href.startsWith('javascript:')) return;
+
+							// 新需求：href="#" 的链接完全阻止跳转和任何行为
+							if (href === '#') {
+								ev.preventDefault();
+								return;
+							}
+
+							// 处理其他内部锚点（如 #about、#contact 等）
+							if (href.startsWith('#')) {
+								const rawId = href.slice(1);
+								if (!rawId) return;
+
+								const id = decodeURIComponent(rawId);
+								const target = 
+									document.getElementById(id) ||
+									document.querySelector('a[name="' + id.replace(/"/g, '\"') + '"]') ||
+									document.querySelector('[name="' + id.replace(/"/g, '\"') + '"]');
+
+								if (target && target.scrollIntoView) {
+									ev.preventDefault();
+									try {
+										history.pushState(null, '', href);
+									} catch (e) {}
+									target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+								}
+								return;
+							}
+
+							// 处理外部链接
+							let url;
+							try {
+								url = new URL(href, window.location.href);
+							} catch (e) {
+								return;
+							}
+
+							if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
+							const isExternal = url.hostname !== window.location.hostname;
+
+							if (isExternal || anchor.getAttribute('target') === '_blank') {
+								ev.preventDefault();
+								window.open(url.toString(), '_blank', 'noopener,noreferrer');
+							}
+
+						} catch (e) {
+							// 出错时不阻止默认行为
+						}
+					}, true);
+
+					// 1. 暴力清除函数：从 DOM 层面抹除 onclick 属性
+					var Z_removeInlineOnclick = function () {
+						// 专门锁定 href="#" 且带有 onclick 的 a 标签
+						const targetedLinks = document.querySelectorAll('a[href="#"][onclick]');
+						for (let i = 0; i < targetedLinks.length; i++) {
+							targetedLinks[i].removeAttribute('onclick');
+							targetedLinks[i].onclick = null; // 确保 JS 层的赋值也被清理
+						}
+					};
+					// 3. 动态监测：防止页面通过异步加载重新生成带 onclick 的元素
+					var z_observer = new MutationObserver(function () {
+						Z_removeInlineOnclick();
+					});
+
+					z_observer.observe(document.documentElement, {
+						childList: true,
+						subtree: true,
+						attributes: true,
+						attributeFilter: ['onclick']
+					});
+
+					// 4. 初始化执行一次
+					Z_removeInlineOnclick();
+
+					const Z_rawCreateElement = document.createElement;
+
+					document.createElement = function (tagName, ...args) {
+						const el = Z_rawCreateElement.call(this, tagName, ...args);
+
+						if (tagName.toLowerCase() === 'script') {
+							const rawSetAttribute = el.setAttribute;
+							const rawGetAttribute = el.getAttribute;
+							let srcValue = '';
+							
+							el.setAttribute = function (name, value) {
+								if (name === 'src' && typeof value === 'string') {
+									value = z_proxyCdnUrl(value);
+									srcValue = value;
+								}
+								return rawSetAttribute.call(this, name, value);
+							};
+
+							Object.defineProperty(el, 'src', {
+								get: function() {
+									return srcValue || rawGetAttribute.call(this, 'src') || '';
+								},
+								set: function(value) {
+									if (typeof value === 'string') {
+										srcValue = z_proxyCdnUrl(value);
+										rawSetAttribute.call(this, 'src', srcValue);
+									} else {
+										srcValue = value;
+									}
+								},
+								configurable: true,
+								enumerable: true
+							});
+						}
+
+						if (tagName.toLowerCase() === 'link') {
+							const rawSetAttribute = el.setAttribute;
+							const rawGetAttribute = el.getAttribute;
+							let hrefValue = '';
+							
+							el.setAttribute = function (name, value) {
+								if (name === 'href' && typeof value === 'string') {
+									value = z_proxyCdnUrl(value);
+									hrefValue = value;
+								}
+								return rawSetAttribute.call(this, name, value);
+							};
+
+							Object.defineProperty(el, 'href', {
+								get: function() {
+									return hrefValue || rawGetAttribute.call(this, 'href') || '';
+								},
+								set: function(value) {
+									if (typeof value === 'string') {
+										hrefValue = z_proxyCdnUrl(value);
+										rawSetAttribute.call(this, 'href', hrefValue);
+									} else {
+										hrefValue = value;
+									}
+								},
+								configurable: true,
+								enumerable: true
+							});
+						}
+
+						return el;
+					};
+
+					const Z_OriginalXMLHttpRequest = window.XMLHttpRequest;
+					window.XMLHttpRequest = function (...args) {
+						const xhr = new Z_OriginalXMLHttpRequest(...args);
+						const rawOpen = xhr.open;
+
+						xhr.open = function (method, url, ...rest) {
+							if (typeof url === 'string') {
+								const methodUpper = (method || '').toUpperCase();
+								if (methodUpper === 'GET' && z_isUrlInWhitelist(url)) {
+									url = z_proxyCdnUrl(url);
+								}
+							}
+							return rawOpen.call(this, method, url, ...rest);
+						};
+
+						return xhr;
+					};
+
+					window.XMLHttpRequest.prototype = Z_OriginalXMLHttpRequest.prototype;
+					Object.setPrototypeOf(window.XMLHttpRequest, Z_OriginalXMLHttpRequest);
+
+					const z_originalFetch = window.fetch;
+					window.fetch = async function (...args) {
+						if (args.length > 0) {
+							let url = '';
+							let method = 'GET';
+							
+							if (typeof args[0] === 'string') {
+								url = args[0];
+								if (args[1] && args[1].method) {
+									method = args[1].method.toUpperCase();
+								}
+								if (method === 'GET' && z_isUrlInWhitelist(url)) {
+									args[0] = z_proxyCdnUrl(url);
+								}
+							} else if (args[0] instanceof Request) {
+								const originalUrl = args[0].url;
+								method = (args[0].method || 'GET').toUpperCase();
+								if (method === 'GET' && z_isUrlInWhitelist(originalUrl)) {
+									const proxiedUrl = z_proxyCdnUrl(originalUrl);
+									if (proxiedUrl !== originalUrl) {
+										args[0] = new Request(proxiedUrl, args[0]);
+									}
+								}
+							}
+						}
+						return z_originalFetch.apply(this, args);
+					};
+				</script>
+			</head>
+			<body>
+				<html lang="fa" dir="rtl"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>گزارش جامع مدیریت استراتژیک - قنادی سان سیتی</title>
+    <style>
+        /* استایل‌های کلی */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background-color: #f4f7f6; margin: 0; padding: 0; display: flex; }
+        
+        /* منوی کناری */
+        .sidebar { width: 260px; background-color: #2c3e50; color: white; height: 100vh; position: fixed; padding-top: 20px; overflow-y: auto; box-shadow: -2px 0 10px rgba(0,0,0,0.1); }
+        .sidebar h2 { text-align: center; font-size: 18px; padding: 20px 15px; margin: 0; border-bottom: 1px solid #34495e; }
+        .sidebar a { display: block; padding: 12px 20px; color: #bdc3c7; text-decoration: none; font-size: 14px; transition: 0.3s; border-right: 3px solid transparent; }
+        .sidebar a:hover { background-color: #34495e; color: white; border-right-color: #2980b9; }
+
+        /* محتوای اصلی */
+        .main-content { margin-right: 260px; width: calc(100% - 260px); padding: 40px; }
+        .container { max-width: 900px; margin: 0 auto; background-color: #fff; padding: 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; margin-bottom: 40px; }
+        
+        /* هدر و عناوین */
+        header { text-align: center; border-bottom: 3px solid #2c3e50; padding-bottom: 20px; margin-bottom: 30px; }
+        h1 { color: #2c3e50; margin: 0; font-size: 26px; }
+        .subtitle { color: #7f8c8d; font-size: 15px; margin-top: 5px; }
+        h2 { color: #2c3e50; margin-top: 40px; margin-bottom: 20px; font-size: 22px; border-right: 5px solid #2980b9; padding-right: 15px; }
+        h3 { color: #34495e; font-size: 18px; margin-top: 30px; margin-bottom: 15px; }
+        
+        /* جداول */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: top; }
+        th { background-color: #2c3e50; color: white; font-weight: bold; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .total-row { background-color: #2c3e50 !important; color: white; font-weight: bold; }
+        .col-right { text-align: right; }
+
+        /* بجزها و کارت‌ها */
+        .summary-box { padding: 20px; border-radius: 5px; margin-bottom: 30px; display: flex; align-items: center; gap: 20px; }
+        .score-circle { color: white; width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; flex-shrink: 0; }
+        .ife-box { background-color: #e8f8f5; border: 1px solid #16a085; border-right: 5px solid #16a085; } .ife-box .score-circle { background-color: #16a085; }
+        .efe-box { background-color: #fdedec; border: 1px solid #e74c3c; border-right: 5px solid #e74c3c; } .efe-box .score-circle { background-color: #e74c3c; }
+
+        .crisis-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        .crisis-item strong { display: block; color: #16a085; font-size: 13px; margin-bottom: 3px; }
+        .crisis-item p { margin: 0; font-size: 13px; color: #555; }
+        .crisis-card { border: 1px solid #e1e1e1; border-right: 5px solid #ccc; border-radius: 5px; padding: 15px; margin-bottom: 15px; }
+        .crisis-card.red { border-right-color: #c0392b; } .crisis-card.orange { border-right-color: #d35400; } .crisis-card.yellow { border-right-color: #f39c12; }
+        .crisis-title { font-size: 16px; font-weight: bold; color: #2c3e50; margin-bottom: 10px; }
+        .zone-red { background-color: #c0392b; } .zone-orange { background-color: #d35400; } .zone-yellow { background-color: #f39c12; }
+        .zone-h2 { color: #fff; padding: 10px 15px; border-radius: 5px; font-size: 18px; margin-top: 35px; margin-bottom: 15px; }
+
+        /* نمودارهای CSS */
+        .charts-wrapper { display: flex; gap: 30px; flex-wrap: wrap; justify-content: space-between; margin-top: 30px; }
+        .chart-box { flex: 1; min-width: 280px; background: #fdfdfd; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+        .chart-title { text-align: center; font-weight: bold; color: #2c3e50; margin-bottom: 20px; font-size: 16px; }
+        .stacked-bar-container { width: 100%; height: 40px; background-color: #f0f0f0; border-radius: 20px; overflow: hidden; display: flex; margin-bottom: 15px; }
+        .bar-strength { background-color: #27ae60; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; }
+        .bar-weakness { background-color: #c0392b; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; }
+        .bar-opp { background-color: #27ae60; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; }
+        .bar-threat { background-color: #c0392b; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; }
+        .legend-box { display: flex; justify-content: center; gap: 20px; font-size: 13px; margin-top: 10px; }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; } .dot.green { background-color: #27ae60; } .dot.red { background-color: #c0392b; }
+        .vertical-bars { display: flex; flex-direction: column; gap: 12px; }
+        .vbar-item { display: flex; align-items: center; gap: 10px; }
+        .vbar-label { width: 120px; font-size: 12px; text-align: left; color: #555; }
+        .vbar-track { flex: 1; background-color: #f0f0f0; border-radius: 5px; height: 20px; overflow: hidden;}
+        .vbar-fill { height: 100%; border-radius: 5px; }
+        .vbar-value { font-size: 11px; font-weight: bold; width: 35px; }
+
+        /* SWOT و استراتژی‌ها */
+        .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px; }
+        .swot-box { padding: 20px; border-radius: 8px; border: 1px solid #ddd; }
+        .swot-box h3 { margin-top: 0; font-size: 18px; padding-bottom: 10px; border-bottom: 2px solid; }
+        .swot-box ul { padding-right: 20px; margin-bottom: 0; font-size: 13px; }
+        .s-box { background-color: #eafaf1; border-color: #27ae60; } .s-box h3 { color: #27ae60; border-color: #27ae60; }
+        .w-box { background-color: #fdedec; border-color: #c0392b; } .w-box h3 { color: #c0392b; border-color: #c0392b; }
+        .o-box { background-color: #eaf2f8; border-color: #2980b9; } .o-box h3 { color: #2980b9; border-color: #2980b9; }
+        .t-box { background-color: #fef9e7; border-color: #f39c12; } .t-box h3 { color: #f39c12; border-color: #f39c12; }
+
+        .strat-card { display: flex; gap: 15px; margin-bottom: 15px; padding: 15px; border-radius: 5px; background-color: #fdfdfd; border-right: 5px solid #2c3e50; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .strat-tag { font-size: 12px; font-weight: bold; padding: 5px 10px; border-radius: 15px; height: fit-content; color: white; }
+        .strat-content h4 { margin: 0 0 5px 0; color: #2c3e50; font-size: 15px; }
+        .strat-content p { margin: 0; font-size: 13px; color: #555; }
+        .so { border-right-color: #27ae60; } .so .strat-tag { background-color: #27ae60; }
+        .wo { border-right-color: #2980b9; } .wo .strat-tag { background-color: #2980b9; }
+        .st { border-right-color: #f39c12; } .st .strat-tag { background-color: #f39c12; }
+        .wt { border-right-color: #c0392b; } .wt .strat-tag { background-color: #c0392b; }
+
+        .badge { color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+        .badge-s { background-color: #27ae60; } .badge-w { background-color: #c0392b; } .badge-o { background-color: #27ae60; } .badge-t { background-color: #c0392b; }
+
+        @media print {
+            .sidebar { display: none; }
+            .main-content { margin-right: 0; width: 100%; padding: 0; }
+            .container { box-shadow: none; border: none; margin: 0; max-width: 100%; padding: 20px; }
+            body { background-color: white; }
+        }
+    </style>
+<style>
+/* ===== نوار ترکیبی وزنی (قالب واحد همه تحلیل‌ها) ===== */
+.sb-row { margin: 13px 0 17px 0; }
+.sb-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+.sb-name { font-weight: bold; font-size: 13.5px; color: #1e293b; }
+.sb-net { font-weight: bold; font-size: 12.5px; padding: 2px 12px; border-radius: 12px; font-family: monospace; }
+.sb-net.pos { background: #ccfbf1; color: #065f46; }
+.sb-net.neg { background: #fee2e2; color: #991b1b; }
+.sb-track { display: flex; height: 30px; border-radius: 8px; overflow: hidden; background: #f1f5f9; border: 1px solid #e2e8f0; }
+.sb-seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: bold; overflow: hidden; white-space: nowrap; }
+.sb-seg.o { background: #0d9488; }
+.sb-seg.t { background: #dc2626; }
+.sb-seg.n { background: #94a3b8; }
+.sb-note { font-size: 11.5px; color: #64748b; margin-top: 4px; }
+.tg { color: #0d9488; font-weight: bold; }
+.tr { color: #dc2626; font-weight: bold; }
+.lead { line-height: 2; color: #334155; margin: 10px 0 16px 0; }
+.footnote { font-size: 11.5px; color: #94a3b8; border-right: 3px solid #cbd5e1; padding-right: 10px; margin: 10px 0; line-height: 1.9; }
+.note-box { background: #fffbeb; border: 1px solid #fcd34d; border-right: 4px solid #f59e0b; border-radius: 8px; padding: 14px 16px; margin: 16px 0; font-size: 13.5px; line-height: 2.1; color: #78350f; }
+.summary-box.teal { background: #f0fdfa; border: 1px solid #99f6e4; border-right: 4px solid #14b8a6; border-radius: 8px; padding: 14px 16px; margin: 16px 0; line-height: 2.05; }
+.summary-box.red { background: #fef2f2; border: 1px solid #fecaca; border-right: 4px solid #ef4444; border-radius: 8px; padding: 14px 16px; margin: 16px 0; line-height: 2.05; }
+.total-row-note { background: #f8fafc; border-radius: 8px; padding: 10px 14px; margin: 12px 0; font-size: 13.5px; }
+.pos { color: #047857; font-weight: bold; }
+.neg-num { color: #b91c1c; font-weight: bold; }
+.bdg { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 11.5px; font-weight: bold; white-space: nowrap; }
+.bdg-s { background: #d1fae5; color: #065f46; }
+.bdg-w { background: #fee2e2; color: #991b1b; }
+.bdg-n { background: #fef3c7; color: #92400e; }
+.bdg-o { background: #dbeafe; color: #1e40af; }
+.bdg-t { background: #f1f5f9; color: #475569; }
+.bdg-core { background: #0d9488; color: #fff; }
+.bdg-strat { background: #f59e0b; color: #fff; }
+.bdg-oper { background: #64748b; color: #fff; }
+/* ===== ماتریس IE ===== */
+.ie-wrap { margin: 18px 0; }
+.ie-y { text-align: center; font-size: 12px; color: #475569; font-weight: bold; margin-bottom: 6px; }
+.ie-matrix { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.ie-cell { border-radius: 10px; min-height: 86px; padding: 10px 6px; text-align: center; display: flex; flex-direction: column; justify-content: flex-start; position: relative; }
+.ie-cell.grow { background: #d1fae5; border: 1px solid #6ee7b7; }
+.ie-cell.hold { background: #dbeafe; border: 1px solid #93c5fd; }
+.ie-cell.harvest { background: #fee2e2; border: 1px solid #fca5a5; }
+.ie-num { font-size: 18px; font-weight: 900; color: #1e293b; }
+.ie-lbl { font-size: 11.5px; color: #334155; margin-top: 2px; }
+.ie-marker { margin-top: 8px; background: #1e293b; color: #fbbf24; border-radius: 8px; padding: 6px 4px; font-size: 11px; font-weight: bold; line-height: 1.7; }
+.ie-x { text-align: center; font-size: 11.5px; color: #475569; font-weight: bold; padding-top: 4px; }
+/* ===== ذی‌نفعان ===== */
+.stake-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+.quad-box { border-radius: 10px; padding: 12px 14px; }
+.quad-box h3 { margin: 0 0 8px 0; font-size: 13.5px; }
+.quad-box ul { margin: 0; padding-right: 18px; }
+.quad-box li { font-size: 12.5px; margin-bottom: 4px; color: #1e293b; }
+.q-close { background: #fef2f2; border: 1px solid #fca5a5; }
+.q-close h3 { color: #b91c1c; }
+.q-keep { background: #fffbeb; border: 1px solid #fcd34d; }
+.q-keep h3 { color: #b45309; }
+.q-inform { background: #eff6ff; border: 1px solid #93c5fd; }
+.q-inform h3 { color: #1d4ed8; }
+.q-monitor { background: #f8fafc; border: 1px solid #cbd5e1; }
+.q-monitor h3 { color: #475569; }
+h3 { color: #0f766e; font-size: 15.5px; margin: 18px 0 10px 0; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>گزارش استراتژیک<br>سان سیتی</h2>
+    <a href="#crisis">۱. نقشه بحران سازمان</a>
+    <a href="#freq">۲. تحلیل فراوانی بحران‌ها</a>
+    <a href="#action">۳. نقشه راه اجرایی</a>
+    <a href="#env">۴. محیط کلان، صنعت و کنترل داخلی</a>
+    <a href="#ife">۵. ارزیابی داخلی (IFE)</a>
+    <a href="#efe">۶. ارزیابی خارجی (EFE)</a>
+    <a href="#ie">۷. ماتریس داخلی-خارجی (IE)</a>
+    <a href="#swot">۸. ماتریس SWOT</a>
+    <a href="#vc">۹. زنجیره ارزش و تلفیق ممیزی</a>
+    <a href="#stake">۱۰. ذی‌نفعان و برون‌سپاری</a>
+</div>
+
+<div class="main-content">
+
+    <!-- 1. Crisis Map -->
+    <div class="container" id="crisis">
+        <header>
+            <h1>۱. نقشه بحران سازمان (Crisis Map)</h1>
+            <div class="subtitle">شناسایی، اولویت‌بندی و مدیریت بحران‌های حاد | قنادی سان سیتی</div>
+        </header>
+        
+        <h2 class="zone-h2 zone-red">منطقه قرمز: بحران‌های حاد و استراتژیک</h2>
+        <div class="crisis-card red">
+            <div class="crisis-title">تداخل در تصمیم‌گیری مدیریتی</div>
+            <div class="crisis-grid">
+                <div class="crisis-item"><strong>مشکل:</strong><p>تداخل تصمیم‌گیری میان مدیر ارشد و مدیر میانی.</p></div>
+                <div class="crisis-item"><strong>اثر:</strong><p>موازی‌کاری، کاهش بهره‌وری و تصمیمات سلیقه‌ای.</p></div>
+                <div class="crisis-item"><strong>راهکار:</strong><p>تفکیک وظایف و تعیین سطوح اختیار بین مالک و خانم میرحسینی.</p></div>
+            </div>
+        </div>
+        >
+        <div class="crisis-card red">
+            <div class="crisis-title">رقابت ناسالم و توسعه فیزیکی</div>
+            <div class="crisis-grid">
+                <div class="crisis-item"><strong>مشکل:</strong><p>کاهش قیمت توسط رقبا و سنگ‌اندازی برای توسعه فضای فیزیکی.</p></div>
+                <div class="crisis-item"><strong>اثر:</strong><p>کاهش بازده فروش و تهدید سهم بازار.</p></div>
+                <div class="crisis-item"><strong>راهکار:</strong><p>پیگیری اتحادیه و استفاده از واسطه برای خرید ملک مجاور.</p></div>
+            </div>
+        </div>
+        <div class="crisis-card red">
+            <div class="crisis-title">افزایش بهای تمام شده شیرینی ماشینی</div>
+            <div class="crisis-grid">
+                <div class="crisis-item"><strong>مشکل:</strong><p>هزینه بالای تولید سنتی با نیروی انسانی زیاد.</p></div>
+                <div class="crisis-item"><strong>اثر:</strong><p>کاهش حاشیه سود در محصولات پرفروش.</p></div>
+                <div class="crisis-item"><strong>راهکار:</strong><p>ساخت دستگاه اختصاصی با قالب فلزی (۱۰ برابر شدن سرعت).</p></div>
+            </div>
+        </div>
+
+        <h2 class="zone-h2 zone-orange">منطقه نارنجی: بحران‌های عملیاتی</h2>
+        <div class="crisis-card orange">
+            <div class="crisis-title">انقضای مواد اولیه و محصولات کادویی</div>
+            <div class="crisis-grid">
+                <div class="crisis-item"><strong>مشکل:</strong><p>بی‌توجهی به تاریخ انقضا و عدم استقبال از برخی محصولات.</p></div>
+                <div class="crisis-item"><strong>اثر:</strong><p>افزایش ضایعات و آسیب به برند.</p></div>
+                <div class="crisis-item"><strong>راهکار:</strong><p>گزارش هفتگی انباردار، انتقال پرسنل دقیق به انبار.</p></div>
+            </div>
+        </div>
+        <div class="crisis-card orange">
+            <div class="crisis-title">ضعف بسته‌بندی و تجربه مشتری</div>
+            <div class="crisis-grid">
+                <div class="crisis-item"><strong>مشکل:</strong><p>وزن سنگین جعبه‌ها و استرس حمل کیک‌های مطبق.</p></div>
+                <div class="crisis-item"><strong>اثر:</strong><p>کاهش فروش و رضایت مشتری.</p></div>
+                <div class="crisis-item"><strong>راهکار:</strong><p>جعبه‌های دو رنگ، بسته‌بندی سبک و سرویس حمل تا درب خودرو.</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Frequency Chart -->
+    <div class="container" id="freq">
+        <header>
+            <h1>۲. تحلیل فراوانی بحران‌های فوری</h1>
+        </header>
+        <div class="summary-box" style="background-color: #eaf2f8; border-left: 5px solid #2980b9; display: block;">
+            <strong>یافته کلیدی:</strong> حوزه «تولید» (۷ بحران) و «برندینگ/بازاریابی» (۶ بحران) بیشترین بار بحران‌های فوری را دارند. این دو حوزه نیازمند تخصیص منابع و مداخله فوری مدیریتی هستند.
+        </div>
+        <div class="charts-wrapper">
+            <div class="chart-box">
+                <div class="chart-title">فراوانی بحران‌ها به تفکیک حوزه</div>
+                <div class="vertical-bars">
+                    <div class="vbar-item"><div class="vbar-label">تولید</div><div class="vbar-track"><div class="vbar-fill" style="width: 100%; background-color: #c0392b;"></div></div><div class="vbar-value" style="color: #c0392b;">7</div></div>
+                    <div class="vbar-item"><div class="vbar-label">بازاریابی</div><div class="vbar-track"><div class="vbar-fill" style="width: 85%; background-color: #c0392b;"></div></div><div class="vbar-value" style="color: #c0392b;">6</div></div>
+                    <div class="vbar-item"><div class="vbar-label">سیستم اطلاعاتی</div><div class="vbar-track"><div class="vbar-fill" style="width: 42%; background-color: #d35400;"></div></div><div class="vbar-value" style="color: #d35400;">3</div></div>
+                    <div class="vbar-item"><div class="vbar-label">مدیریت انبار</div><div class="vbar-track"><div class="vbar-fill" style="width: 28%; background-color: #f39c12;"></div></div><div class="vbar-value" style="color: #f39c12;">2</div></div>
+                    <div class="vbar-item"><div class="vbar-label">سایر حوزه‌ها</div><div class="vbar-track"><div class="vbar-fill" style="width: 14%; background-color: #f39c12;"></div></div><div class="vbar-value" style="color: #f39c12;">1</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Action Plan -->
+    <div class="container" id="action">
+        <header><h1>۳. نقشه راه اجرایی (Action Plan)</h1></header>
+        <table>
+            <thead><tr><th>بحران</th><th>راهکار اجرایی</th><th>مسئول</th><th>زمان</th></tr></thead>
+            <tbody>
+                <tr><td>رکود خلاقیت طراحان</td><td>ارجاع به سایت‌های الهام‌بخش (Pinterest) و آموزش.</td><td>خانم میرحسینی</td><td>۱ ماهه</td></tr>
+                <tr><td>بهای تمام شده شیرینی ماشینی</td><td>تسریع ساخت دستگاه اختصاصی در اصفهان.</td><td>مالک / مدیر تولید</td><td>۳-۶ ماه</td></tr>
+                <tr><td>عدم دقت در دستورالعمل‌ها</td><td>نظارت مستمر، جلسات هماهنگی و سیستم تشویق/جریمه.</td><td>سرپرست تولید</td><td>مستمر</td></tr>
+                <tr><td>تاخیر تامین و خرابی تجهیزات</td><td>تعمیرات پیشگیرانه (PM) و قرارداد با تامین‌کنندگان پشتیبان.</td><td>مدیر تامین</td><td>۲ ماهه</td></tr>
+                <tr><td>وزن سنگین جعبه‌های کادویی</td><td>طراحی جعبه دو رنگ (آبی/نارنجی) و بسته‌بندی سبک.</td><td>بازاریابی</td><td>۲ ماهه</td></tr>
+                <tr><td>استرس حمل کیک‌های انبوه</td><td>ارائه سرویس حمل تا درب خودرو مشتری.</td><td>سرپرست فروشگاه</td><td>آنی</td></tr>
+                <tr><td>شباهت به رقبا و شکایات</td><td>ایجاد سیستم CRM و تدوین پیشنهاد فروش منحصربفرد (USP).</td><td>خانم میرحسینی</td><td>۳ ماهه</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 4. Environment -->
+    <div class="container" id="env">
+        <header>
+            <h1>۴. تحلیل محیط کلان، صنعت و کنترل داخلی</h1>
+            <div class="subtitle">PESTEL + پنج نیروی پورتر + حسابرسی داخلی (۹۶ پرسش) | قنادی سان سیتی</div>
+        </header>
+        <p class="lead">تحلیل بیرونی و درونی سازمان در این گزارش سه لایه دارد: <strong>محیط کلان</strong> (۶۴ متغیر در ۴ بعد)، <strong>محیط صنعت</strong> (۶۹ گزاره پورتر) و <strong>کنترل‌های داخلی</strong> (۹۶ پرسش در ۹ حوزه). برای قابل‌مقایسه‌شدن نتایج، همه نمودارهای این بخش و بخش‌های IFE و EFE از یک قالب واحد «نوار ترکیبی وزنی» استفاده می‌کنند: سهم <span class="tg">عوامل مطلوب (فرصت/قوت)</span> در برابر <span class="tr">عوامل نامطلوب (تهدید/ضعف)</span> از مجموع وزن‌ها، در مقیاس ۱۰۰٪. بدین ترتیب وضعیت هر بُعد — از اقتصاد کلان تا هر حوزه ممیزی — در یک نگاه و با یک مقیاس قابل تحلیل و مقایسه است.</p>
+
+        <h2>بخش اول: محیط کلان (PESTEL + فناوری)</h2>
+        <p>۶۴ متغیر کلان پاسخ‌گرفته‌شده در چهار بُعد اقتصادی، سیاسی-قانونی، اجتماعی-زیست‌محیطی و فناوری وزن‌دهی شده‌اند. محیط کلان در مجموع تقریباً متعادل اما رو به نامطلوب است (۵۱٪ تهدید). بُعد فناوری با ۹۳٪ فرصت، بزرگ‌ترین پنجره فرصت سازمان است و بُعد اقتصادی با ۶۶٪ تهدید (تورم، دلار، مالیات)، اصلی‌ترین فشار بیرونی را وارد می‌کند.</p>
+        <div class="sb-row">
+<div class="sb-head"><span class="sb-name">اقتصادی (EE) — 22 متغیر</span><span class="sb-net neg">-420.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:34.33%" title="فرصت: 34.3%">34٪</div>
+<div class="sb-seg t" style="width:65.67%" title="تهدید: 65.7%">66٪</div>
+</div>
+<div class="sb-note">وزن فرصت 460 | وزن تهدید 880 | خالص -420</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">سیاسی و قانونی (EP) — 9 متغیر</span><span class="sb-net neg">-10.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:48.84%" title="فرصت: 48.8%">49٪</div>
+<div class="sb-seg t" style="width:51.16%" title="تهدید: 51.2%">51٪</div>
+</div>
+<div class="sb-note">وزن فرصت 210 | وزن تهدید 220 | خالص -10</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">اجتماعی و زیست‌محیطی (ES) — 24 متغیر</span><span class="sb-net neg">-155.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:44.24%" title="فرصت: 44.2%">44٪</div>
+<div class="sb-seg t" style="width:55.76%" title="تهدید: 55.8%">56٪</div>
+</div>
+<div class="sb-note">وزن فرصت 595 | وزن تهدید 750 | خالص -155</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">فناوری (ET) — 9 متغیر</span><span class="sb-net pos">+510.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:93.22%" title="فرصت: 93.2%">93٪</div>
+<div class="sb-seg t" style="width:6.78%" title="تهدید: 6.8%"></div>
+</div>
+<div class="sb-note">وزن فرصت 550 | وزن تهدید 40 | خالص +510</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">جمع محیط کلان — ۶۴ متغیر</span><span class="sb-net neg">-75.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:48.99%" title="فرصت: 49.0%">49٪</div>
+<div class="sb-seg t" style="width:51.01%" title="تهدید: 51.0%">51٪</div>
+</div>
+</div>
+        <div class="charts-wrapper">
+            <div class="chart-box"><div class="chart-title">۵ فرصت برتر کلان</div><table><thead><tr><th>کد</th><th>متغیر</th><th>وزن</th></tr></thead><tbody><tr><td>ET-2</td><td class="col-right">فناوری‌های بی‌سیم برای بهبود سرعت و کارایی</td><td>100</td></tr><tr><td>EE-14</td><td class="col-right">جابجایی تقاضا میان دسته‌های کالا و خدمات</td><td>90</td></tr><tr><td>EE-17</td><td class="col-right">پیش‌بینی‌های اقتصادی مساعد</td><td>90</td></tr><tr><td>ES-17</td><td class="col-right">تغییر نگرش مشتریان به کیفیت</td><td>90</td></tr><tr><td>ES-21</td><td class="col-right">افزایش اهمیت مسئولیت اجتماعی (تصویر برند)</td><td>90</td></tr></tbody></table></div>
+            <div class="chart-box"><div class="chart-title">۵ تهدید برتر کلان</div><table><thead><tr><th>کد</th><th>متغیر</th><th>وزن</th></tr></thead><tbody><tr><td>EE-11</td><td class="col-right">نوسانات شدید ارزش دلار</td><td>100</td></tr><tr><td>EP-2</td><td class="col-right">احزاب و جریان‌های سیاسی</td><td>100</td></tr><tr><td>ES-3</td><td class="col-right">تغییرات زیست‌محیطی مؤثر بر عملیات و تامین</td><td>100</td></tr><tr><td>EE-19</td><td class="col-right">سیاست‌های مالی دولت</td><td>90</td></tr><tr><td>EE-21</td><td class="col-right">قاچاق کالا</td><td>90</td></tr></tbody></table></div>
+        </div>
+        <div class="summary-box teal"><strong>جمع‌بندی محیط کلان:</strong> فشار اصلی از سمت اقتصاد (نوسان دلار با وزن ۱۰۰، سیاست‌های مالی و قاچاق) می‌آید؛ در مقابل، فناوری (بی‌سیم و اتوماسیون با وزن ۱۰۰) و تغییر نگرش مشتریان به کیفیت، مسیر رشد را باز می‌کنند. پاسخ سازمان به این فرصت‌ها اکنون محدود است — این شکاف در تحلیل EFE (بخش ۶) کمّی شده است.</div>
+
+        <h2>بخش دوم: محیط صنعت — پنج نیروی پورتر</h2>
+        <p>۶۹ گزاره استاندارد پورتر پاسخ‌دهی و وزن‌دهی شده‌اند. جمع امتیاز هر نیرو «اثر خالص بر جذابیت صنعت» است: مقدار مثبت یعنی آن نیرو در مجموع <strong>به نفع</strong> کسب‌وکار است (فرصت) و مقدار منفی یعنی <strong>به زیان</strong> آن (تهدید). دقت کنید علامتِ عدد، «قوی‌بودن نیرو» را نشان نمی‌دهد؛ شدت واقعی هر نیرو از پاسخ گزاره‌ها استخراج شده و در ستون «شدت نیرو» آمده است تا خوانش دوگانه پیش نیاید.</p>
+        <table><thead><tr><th>نیرو</th><th>مؤلفه فرصت</th><th>مؤلفه تهدید</th><th>امتیاز خالص</th><th>شدت نیرو</th><th>جهت اثر</th></tr></thead><tbody><tr><td class="col-right">قدرت چانه‌زنی تامین‌کنندگان (ESU)</td><td>+47.9</td><td>-17.1</td><td class="pos">+30.8</td><td class="col-right">ضعیف</td><td class="col-right">مطلوب (فرصت)</td></tr><tr><td class="col-right">تهدید کالاهای جایگزین (ESUB)</td><td>+9.6</td><td>-21.1</td><td class="neg-num">-11.5</td><td class="col-right">متوسط</td><td class="col-right">نامطلوب (تهدید)</td></tr><tr><td class="col-right">قدرت چانه‌زنی مصرف‌کنندگان (EC)</td><td>+44.7</td><td>-14.5</td><td class="pos">+30.2</td><td class="col-right">ضعیف</td><td class="col-right">مطلوب (فرصت)</td></tr><tr><td class="col-right">رقابت میان رقبا (ECO)</td><td>+27.7</td><td>-77.6</td><td class="neg-num">-50.0</td><td class="col-right">بسیار شدید</td><td class="col-right">نامطلوب (تهدید)</td></tr><tr><td class="col-right">تهدید تازه‌واردان (EN)</td><td>+30.9</td><td>-17.1</td><td class="pos">+13.8</td><td class="col-right">متوسط</td><td class="col-right">مطلوب (فرصت)</td></tr></tbody></table>
+        <div class="sb-row">
+<div class="sb-head"><span class="sb-name">قدرت چانه‌زنی تامین‌کنندگان (ESU)</span><span class="sb-net pos">+30.8</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:73.67%" title="فرصت: 73.7%">74٪</div>
+<div class="sb-seg t" style="width:26.33%" title="تهدید: 26.3%">26٪</div>
+</div>
+<div class="sb-note">شدت نیرو: ضعیف | جهت اثر: مطلوب (فرصت)</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">تهدید کالاهای جایگزین (ESUB)</span><span class="sb-net neg">-11.5</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:31.25%" title="فرصت: 31.3%">31٪</div>
+<div class="sb-seg t" style="width:68.75%" title="تهدید: 68.7%">69٪</div>
+</div>
+<div class="sb-note">شدت نیرو: متوسط | جهت اثر: نامطلوب (تهدید)</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">قدرت چانه‌زنی مصرف‌کنندگان (EC)</span><span class="sb-net pos">+30.2</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:75.54%" title="فرصت: 75.5%">76٪</div>
+<div class="sb-seg t" style="width:24.46%" title="تهدید: 24.5%">24٪</div>
+</div>
+<div class="sb-note">شدت نیرو: ضعیف | جهت اثر: مطلوب (فرصت)</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">رقابت میان رقبا (ECO)</span><span class="sb-net neg">-50.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:26.27%" title="فرصت: 26.3%">26٪</div>
+<div class="sb-seg t" style="width:73.73%" title="تهدید: 73.7%">74٪</div>
+</div>
+<div class="sb-note">شدت نیرو: بسیار شدید | جهت اثر: نامطلوب (تهدید)</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">تهدید تازه‌واردان (EN)</span><span class="sb-net pos">+13.8</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:64.32%" title="فرصت: 64.3%">64٪</div>
+<div class="sb-seg t" style="width:35.68%" title="تهدید: 35.7%">36٪</div>
+</div>
+<div class="sb-note">شدت نیرو: متوسط | جهت اثر: مطلوب (فرصت)</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">جمع پنج نیرو — جذابیت صنعت</span><span class="sb-net pos">+13.3</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:52.15%" title="فرصت: 52.2%">52٪</div>
+<div class="sb-seg t" style="width:47.85%" title="تهدید: 47.8%">48٪</div>
+</div>
+</div>
+        <div class="note-box">
+            <strong>نکته تحلیلی — رابطه «قدرت چانه‌زنی مصرف‌کننده» و «شدت رقابت»:</strong>
+            در مدل پورتر این دو نیرو رابطه مستقیم دارند: وقتی رقابت شدید است، مصرف‌کننده گزینه‌های جایگزین بیشتری دارد و چانه‌زنی او قوی‌تر می‌شود. در داده‌های این صنعت، رقابت <strong>بسیار شدید</strong> است (تعداد زیاد رقبا، رشد پایین فروش، هزینه بالای خروج) اما چانه‌زنی مصرف‌کننده در مجموع <strong>ضعیف</strong> ارزیابی شده است. این واگرایی ریشه در سه گزاره دارد: محصولات «بسیار متمایز و منحصربفرد» (EC-6)، «بخش کمی از هزینه‌های مصرف‌کننده» بودن محصولات (EC-4) و «مهم‌بودن برای کیفیت» (EC-14). یعنی تمایز محصول، قدرت چانه‌زنی خریدار را مهار می‌کند اما شدت رقابت ساختاری (رقبای متعدد و رکود بازار) را کم نمی‌کند. این دو می‌توانند هم‌زمان صادق باشند؛ اما چون EC-1 (خرید در حجم زیاد) همچنان تهدید باقی مانده است، سازمان باید تمایز را با بسته‌بندی و خدمات حمل تقویت کند تا این تعادل ظریف به نفع رقبا برنگردد.
+        </div>
+        <div class="charts-wrapper">
+            <div class="chart-box"><div class="chart-title">۵ فرصت برتر صنعت</div><table><thead><tr><th>کد</th><th>گزاره</th><th>امتیاز</th></tr></thead><tbody><tr><td>ESU-6</td><td class="col-right">خریدار مشتری مهمی برای تامین‌کننده است (توان مذاکره بالا)</td><td>4.3</td></tr><tr><td>ESU-14</td><td class="col-right">تامین‌کننده توان ادغام پیشرو (انجام کار خریدار) ندارد</td><td>4.3</td></tr><tr><td>EC-4</td><td class="col-right">محصولات بخش قابل توجهی از هزینه‌های مصرف‌کننده نیستند</td><td>4.3</td></tr><tr><td>EC-14</td><td class="col-right">محصولات صنعت برای کیفیت محصولات مصرف‌کننده مهم است</td><td>4.3</td></tr><tr><td>EN-1</td><td class="col-right">صرفه‌جویی مقیاس قابل توجه برای ورود لازم است</td><td>4.3</td></tr></tbody></table></div>
+            <div class="chart-box"><div class="chart-title">۵ تهدید برتر صنعت</div><table><thead><tr><th>کد</th><th>گزاره</th><th>امتیاز</th></tr></thead><tbody><tr><td>ESUB-1</td><td class="col-right">کالاهای جایگزین متعدد/مناسب در دسترس است</td><td>4.0</td></tr><tr><td>ECO-5</td><td class="col-right">رشد فروش صنعت کم است</td><td>4.0</td></tr><tr><td>ECO-17</td><td class="col-right">هزینه خروج از صنعت بالاست</td><td>4.0</td></tr><tr><td>ECO-1</td><td class="col-right">تعداد رقبا زیاد است</td><td>3.0</td></tr><tr><td>EC-1</td><td class="col-right">مصرف‌کننده حجم زیادی خریداری می‌کند</td><td>3.0</td></tr></tbody></table></div>
+        </div>
+        <div class="summary-box red">جمع محیط صنعت: <strong>+13.3</strong> — صنعت در مجموع «به‌طور متعادلی مطلوب» است؛ اما این میانگین گمراه‌کننده است: رقابت شدید (−۵۰) تقریباً همه مازاد مثبت نیروهای سایر (تامین‌کننده +۳۰٫۸، مصرف‌کننده +۳۰٫۲، تازه‌واردان +۱۳٫۷) را خنثی می‌کند. پیام مدیریتی: مزیت رقابتی باید از تمایز محصول و وفاداری مشتری حفظ شود، نه رقابت قیمتی.</div>
+        <div class="footnote">＊ گزاره ESUB-1 در پرسش‌نامه اصلی «کالاهای جایگزین خوب کمی وجود دارند» ثبت شده بود که با طبقه‌بندی «تهدید» و امتیاز ۴ در تناقض است؛ مطابق منطق پرسش‌نامه و رتبه‌بندی پاسخ‌دهنده، متن به «کالاهای جایگزین متعدد/مناسب در دسترس است» اصلاح شد و عدد تهدید بدون تغییر باقی ماند.</div>
+
+        <h2>بخش سوم: حسابرسی داخلی — کنترل‌ها و منابع (۹۶ پرسش)</h2>
+        <p>برنامه‌ریزی استراتژیک مبتنی بر کنترل داخلی، وضعیت هر ۹ حوزه سازمان را با ۹۶ پرسش استاندارد سنجیده است: ۶۶ پاسخ در طبقه قوت، ۲۷ پاسخ در طبقه ضعف و ۳ پاسق بدون طبقه‌بندی. هر حوزه وزنی از ۳۰ (تولید) تا ۳ (مدیران ارشد) دارد و ۲۲ پاسخ به‌عنوان «منابع و ظرفیت‌های ممتاز سازمانی» شناسایی شده‌اند که به مزیت رقابتی قابل‌تبدیل‌اند.</p>
+        <div class="sb-row">
+<div class="sb-head"><span class="sb-name">مجموع ۹۶ پرسش ممیزی</span><span class="sb-net pos">+54.1</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:76.08%" title="قوت: 76.1%">76٪</div>
+<div class="sb-seg t" style="width:22.02%" title="ضعف: 22.0%">22٪</div>
+<div class="sb-seg n" style="width:1.90%" title="بدون طبقه: 1.9%"></div>
+</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">تولید و عملیات — وزن 30</span><span class="sb-net pos">+22.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:86.67%" title="قوت: 86.7%">87٪</div>
+<div class="sb-seg t" style="width:13.33%" title="ضعف: 13.3%">13٪</div>
+<div class="sb-seg n" style="width:0.00%" title="بدون طبقه: 0.0%"></div>
+</div>
+<div class="sb-note">11 پرسش: 9 قوت / 2 ضعف | 4 منبع ممتاز</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">بازاریابی — وزن 14</span><span class="sb-net pos">+5.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:67.86%" title="قوت: 67.9%">68٪</div>
+<div class="sb-seg t" style="width:32.14%" title="ضعف: 32.1%">32٪</div>
+<div class="sb-seg n" style="width:0.00%" title="بدون طبقه: 0.0%"></div>
+</div>
+<div class="sb-note">18 پرسش: 9 قوت / 9 ضعف | 4 منبع ممتاز</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">تحقیق و توسعه — وزن 10</span><span class="sb-net pos">+2.1</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:57.00%" title="قوت: 57.0%">57٪</div>
+<div class="sb-seg t" style="width:36.00%" title="ضعف: 36.0%">36٪</div>
+<div class="sb-seg n" style="width:7.00%" title="بدون طبقه: 7.0%"></div>
+</div>
+<div class="sb-note">11 پرسش: 5 قوت / 5 ضعف / 1 بی‌طبقه | 2 منبع ممتاز</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">مالی و حسابداری — وزن 17</span><span class="sb-net pos">+9.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:76.47%" title="قوت: 76.5%">76٪</div>
+<div class="sb-seg t" style="width:23.53%" title="ضعف: 23.5%">24٪</div>
+<div class="sb-seg n" style="width:0.00%" title="بدون طبقه: 0.0%"></div>
+</div>
+<div class="sb-note">12 پرسش: 9 قوت / 3 ضعف | 4 منبع ممتاز</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">مدیریت — وزن 10</span><span class="sb-net pos">+9.2</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:96.00%" title="قوت: 96.0%">96٪</div>
+<div class="sb-seg t" style="width:4.00%" title="ضعف: 4.0%"></div>
+<div class="sb-seg n" style="width:0.00%" title="بدون طبقه: 0.0%"></div>
+</div>
+<div class="sb-note">18 پرسش: 17 قوت / 1 ضعف | 4 منبع ممتاز</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">سیستم‌های اطلاعاتی و IT — وزن 8</span><span class="sb-net pos">+5.4</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:83.75%" title="قوت: 83.8%">84٪</div>
+<div class="sb-seg t" style="width:16.25%" title="ضعف: 16.2%">16٪</div>
+<div class="sb-seg n" style="width:0.00%" title="بدون طبقه: 0.0%"></div>
+</div>
+<div class="sb-note">12 پرسش: 10 قوت / 2 ضعف | 0 منبع ممتاز</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">ارزیابی مدیران ارشد — وزن 3</span><span class="sb-net neg">-0.6</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:20.00%" title="قوت: 20.0%">20٪</div>
+<div class="sb-seg t" style="width:40.00%" title="ضعف: 40.0%">40٪</div>
+<div class="sb-seg n" style="width:40.00%" title="بدون طبقه: 40.0%">40٪</div>
+</div>
+<div class="sb-note">5 پرسش: 1 قوت / 2 ضعف / 2 بی‌طبقه | 2 منبع ممتاز</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">ارزیابی ساختار سازمانی — وزن 4</span><span class="sb-net neg">-2.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:25.00%" title="قوت: 25.0%">25٪</div>
+<div class="sb-seg t" style="width:75.00%" title="ضعف: 75.0%">75٪</div>
+<div class="sb-seg n" style="width:0.00%" title="بدون طبقه: 0.0%"></div>
+</div>
+<div class="sb-note">4 پرسش: 1 قوت / 3 ضعف | 0 منبع ممتاز</div>
+</div><div class="sb-row">
+<div class="sb-head"><span class="sb-name">ارزیابی فرهنگ سازمانی — وزن 4</span><span class="sb-net pos">+4.0</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:100.00%" title="قوت: 100.0%">100٪</div>
+<div class="sb-seg t" style="width:0.00%" title="ضعف: 0.0%"></div>
+<div class="sb-seg n" style="width:0.00%" title="بدون طبقه: 0.0%"></div>
+</div>
+<div class="sb-note">5 پرسش: 5 قوت / 0 ضعف | 2 منبع ممتاز</div>
+</div>
+        <table><thead><tr><th>حوزه ممیزی</th><th>وزن</th><th>پرسش</th><th>قوت</th><th>ضعف</th><th>ممتاز</th><th>وضعیت</th></tr></thead><tbody><tr><td class="col-right">تولید و عملیات</td><td>30</td><td>11</td><td>9</td><td>2</td><td>4</td><td class=""><span class="bdg bdg-s">قوت</span></td></tr><tr><td class="col-right">بازاریابی</td><td>14</td><td>18</td><td>9</td><td>9</td><td>4</td><td class=""><span class="bdg bdg-n">متوازن</span></td></tr><tr><td class="col-right">تحقیق و توسعه</td><td>10</td><td>11</td><td>5</td><td>5</td><td>2</td><td class=""><span class="bdg bdg-n">متوازن</span></td></tr><tr><td class="col-right">مالی و حسابداری</td><td>17</td><td>12</td><td>9</td><td>3</td><td>4</td><td class=""><span class="bdg bdg-s">قوت</span></td></tr><tr><td class="col-right">مدیریت</td><td>10</td><td>18</td><td>17</td><td>1</td><td>4</td><td class=""><span class="bdg bdg-s">قوت</span></td></tr><tr><td class="col-right">سیستم‌های اطلاعاتی و IT</td><td>8</td><td>12</td><td>10</td><td>2</td><td>0</td><td class=""><span class="bdg bdg-s">قوت</span></td></tr><tr><td class="col-right">ارزیابی مدیران ارشد</td><td>3</td><td>5</td><td>1</td><td>2</td><td>2</td><td class=""><span class="bdg bdg-w">ضعف‌محور</span></td></tr><tr><td class="col-right">ارزیابی ساختار سازمانی</td><td>4</td><td>4</td><td>1</td><td>3</td><td>0</td><td class=""><span class="bdg bdg-w">ضعف‌محور</span></td></tr><tr><td class="col-right">ارزیابی فرهنگ سازمانی</td><td>4</td><td>5</td><td>5</td><td>0</td><td>2</td><td class=""><span class="bdg bdg-s">قوت</span></td></tr></tbody></table>
+        <h3>منابع و ظرفیت‌های ممتاز (گزیده — قابلیت تبدیل به مزیت رقابتی)</h3>
+        <table><thead><tr><th>حوزه</th><th>منبع ممتاز</th><th>مزیت قابل‌تبدیل</th></tr></thead><tbody><tr><td class="col-right">تولید و عملیات</td><td class="col-right">تامین‌کنندگان قابل اعتماد و با قیمت مناسب</td><td class="col-right">افزایش تولید؛ کاهش بهای تمام‌شده</td></tr><tr><td class="col-right">تولید و عملیات</td><td class="col-right">استفاده از روش‌های کنترل کیفیت</td><td class="col-right">افزایش کیفیت محصول؛ رضایت مشتریان</td></tr><tr><td class="col-right">تولید و عملیات</td><td class="col-right">ظرفیت مناسب عملیات</td><td class="col-right">ظرفیت مازاد برای رشد تولید</td></tr><tr><td class="col-right">تولید و عملیات</td><td class="col-right">صلاحیت انحصاری در تولید (محصولات منحصربفرد)</td><td class="col-right">محصولات منحصربفرد؛ رضایتمندی مشتریان</td></tr><tr><td class="col-right">بازاریابی</td><td class="col-right">موقعیت و رتبه مناسب در بازار</td><td class="col-right">افزایش سهم بازار</td></tr><tr><td class="col-right">بازاریابی</td><td class="col-right">موقعیت خوب در برابر رقبا</td><td class="col-right">افزایش سهم بازار</td></tr><tr><td class="col-right">بازاریابی</td><td class="col-right">سهم بازار در حال افزایش</td><td class="col-right">افزایش فروش</td></tr><tr><td class="col-right">بازاریابی</td><td class="col-right">کیفیت محصولات بهتر از رقبا</td><td class="col-right">افزایش فروش؛ رضایت مشتری</td></tr><tr><td class="col-right">تحقیق و توسعه</td><td class="col-right">توسعه محصولات جدید در حال افزایش</td><td class="col-right">رضایت مشتری؛ افزایش فروش</td></tr><tr><td class="col-right">تحقیق و توسعه</td><td class="col-right">توسعه چند محصول جدید در سال گذشته</td><td class="col-right">رضایت مشتری؛ افزایش فروش</td></tr><tr><td class="col-right">مالی و حسابداری</td><td class="col-right">قدرت مالی بر اساس نسبت‌های مالی</td><td class="col-right">پایداری مالی</td></tr><tr><td class="col-right">مالی و حسابداری</td><td class="col-right">جذب سرمایه کوتاه‌مدت</td><td class="col-right">قدرت خرید و سرمایه در گردش</td></tr><tr><td class="col-right">مالی و حسابداری</td><td class="col-right">جذب سرمایه بلندمدت</td><td class="col-right">اجرای طرح‌های توسعه‌ای</td></tr><tr><td class="col-right">مالی و حسابداری</td><td class="col-right">سرمایه در گردش کافی</td><td class="col-right">تداوم عملیات</td></tr><tr><td class="col-right">مدیریت</td><td class="col-right">جذابیت شرکت برای جویای کار</td><td class="col-right">جذب استعداد</td></tr><tr><td class="col-right">مدیریت</td><td class="col-right">برنامه‌های پرداخت و پاداش مناسب</td><td class="col-right">افزایش بهره‌وری کارکنان</td></tr><tr><td class="col-right">مدیریت</td><td class="col-right">کاربرد مناسب تیم‌های کاری</td><td class="col-right">بهبود عملکرد عملیاتی</td></tr><tr><td class="col-right">مدیریت</td><td class="col-right">هیئت‌مدیره و تیم مدیریت ارشد کارآمد</td><td class="col-right">افزایش سرعت تصمیم‌گیری</td></tr><tr><td class="col-right">مدیریت</td><td class="col-right">فرهنگ سازمانی قوی و ارزش‌محور</td><td class="col-right">تعالی سازمانی</td></tr></tbody></table>
+        <h3>ضعف‌های شناسایی‌شده (به تفکیک وزن ممیزی)</h3>
+        <table><thead><tr><th>وزن</th><th>حوزه</th><th>ضعف</th></tr></thead><tbody><tr><td>2.0</td><td class="col-right">تولید و عملیات</td><td class="col-right">فرایند تولید بدون چالش و وقفه کار نمی‌کند</td></tr><tr><td>2.0</td><td class="col-right">تولید و عملیات</td><td class="col-right">نبود ابزارها و تکنیک‌های مناسب برنامه‌ریزی و کنترل تولید</td></tr><tr><td>2.0</td><td class="col-right">مالی و حسابداری</td><td class="col-right">سیاست‌های تقسیم سود منطقی نیست</td></tr><tr><td>1.0</td><td class="col-right">مالی و حسابداری</td><td class="col-right">رویه‌های بودجه‌ریزی مالی مؤثر نیست</td></tr><tr><td>1.0</td><td class="col-right">مالی و حسابداری</td><td class="col-right">اهداف مالی مشخص تعیین نشده است</td></tr><tr><td>1.0</td><td class="col-right">ارزیابی ساختار سازمانی</td><td class="col-right">نوع ساختار سازمانی نامناسب است</td></tr><tr><td>1.0</td><td class="col-right">ارزیابی ساختار سازمانی</td><td class="col-right">نمودار سازمانی مکتوب وجود ندارد</td></tr><tr><td>1.0</td><td class="col-right">ارزیابی ساختار سازمانی</td><td class="col-right">جنبه‌های ساختاری غیرمعمول دارد</td></tr><tr><td>0.8</td><td class="col-right">تحقیق و توسعه</td><td class="col-right">امکانات تحقیق و توسعه کافی نیست</td></tr><tr><td>0.7</td><td class="col-right">تحقیق و توسعه</td><td class="col-right">کارکنان R&D واجد شرایط نیستند</td></tr><tr><td>0.7</td><td class="col-right">تحقیق و توسعه</td><td class="col-right">ارتباط R&D با سایر واحدها مؤثر نیست</td></tr><tr><td>0.7</td><td class="col-right">تحقیق و توسعه</td><td class="col-right">نبود ابزارها و تکنیک‌های مناسب R&D</td></tr><tr><td>0.7</td><td class="col-right">تحقیق و توسعه</td><td class="col-right">شایستگی خاصی در R&D ایجاد نشده</td></tr><tr><td>0.66</td><td class="col-right">سیستم‌های اطلاعاتی و IT</td><td class="col-right">استفاده مؤثر IT در همه زمینه‌ها نیست</td></tr><tr><td>0.66</td><td class="col-right">سیستم‌های اطلاعاتی و IT</td><td class="col-right">آموزش کاربران سیستم اطلاعاتی ارائه نمی‌شود</td></tr><tr><td>0.6</td><td class="col-right">ارزیابی مدیران ارشد</td><td class="col-right">سابقه تحصیلی و مهارت‌های مدیران محدود است</td></tr><tr><td>0.5</td><td class="col-right">بازاریابی</td><td class="col-right">بخش‌بندی دقیق و مفید بازار انجام نمی‌شود</td></tr><tr><td>0.5</td><td class="col-right">بازاریابی</td><td class="col-right">مطالعه/تحقیقات بازار انجام نمی‌شود</td></tr><tr><td>0.5</td><td class="col-right">بازاریابی</td><td class="col-right">اطلاعات تحقیقات بازار در تصمیم‌گیری استفاده نمی‌شود</td></tr><tr><td>0.5</td><td class="col-right">بازاریابی</td><td class="col-right">نبود نیروی فروش توانمند و مؤثر</td></tr><tr><td>0.5</td><td class="col-right">بازاریابی</td><td class="col-right">استراتژی تبلیغات مؤثر نیست</td></tr><tr><td>0.5</td><td class="col-right">بازاریابی</td><td class="col-right">استراتژی‌های ترویج مؤثر نیست</td></tr><tr><td>0.5</td><td class="col-right">بازاریابی</td><td class="col-right">برنامه‌ریزی و بودجه‌ریزی بازاریابی مؤثر نیست</td></tr><tr><td>0.5</td><td class="col-right">بازاریابی</td><td class="col-right">نبود ابزارهای برنامه‌ریزی و کنترل بازاریابی</td></tr><tr><td>0.5</td><td class="col-right">بازاریابی</td><td class="col-right">شایستگی خاصی در حوزه‌های بازاریابی ایجاد نشده</td></tr><tr><td>0.4</td><td class="col-right">مدیریت</td><td class="col-right">مدیریت استراتژیک کارکنان برقرار نیست</td></tr></tbody></table>
+        <div class="summary-box teal"><strong>جمع‌بندی ممیزی:</strong> با ۷۶٫۱٪ وزن قوت در برابر ۲۲٪ ضعف، پایه درونی سازمان قوت‌محور است: تولید/عملیات، مالی و مدیریت قوی‌ترین حوزه‌ها هستند. دو حوزه بحرانی عبارت‌اند از <strong>بازاریابی</strong> (نامتوازن‌ترین حوزه با ۸ ضعف عملکردی) و <strong>ساختار سازمانی</strong> (تنها حوزه ضعف‌محور: ۳ ضعف در برابر ۱ قوت). حوزه R&D نیز در حد تعادل پایین قرار دارد. این یافته‌ها مستقیماً در جدول IFE (بخش ۵) و استراتژی‌های اصلاحی به کار رفته‌اند.</div>
+    </div>
+
+    <!-- 5. IFE -->
+    <div class="container" id="ife">
+        <header><h1>۵. ارزیابی عوامل داخلی (IFE)</h1></header>
+        <div class="summary-box ife-box">
+            <div class="score-circle">2.54</div>
+            <div><strong>تحلیل IFE (بازمحاسبه‌شده):</strong> پایه داخلی سازمان در مرز بالای متوسط قرار دارد. قوت‌های مالی، تولیدی و انسانی تقریباً هم‌وزن ضعف‌های بازاریابی و R&D هستند. برخلاف تصور نسخه اولیه (۲٫۵۶)، توازن قوت/ضعف از نظر وزنی تقریباً برابر است و آنچه امتیاز را بالای ۲ نگه می‌دارد، «رتبه بالای قوت‌ها» (۴ و ۳) در برابر «رتبه پایین ضعف‌ها» (۱ و ۲) است.</div>
+        </div>
+        <div class="sb-row">
+<div class="sb-head"><span class="sb-name">سهم وزنی قوت‌ها در برابر ضعف‌ها</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:50.53%" title="قوت: 50.5%">51٪</div>
+<div class="sb-seg t" style="width:49.47%" title="ضعف: 49.5%">49٪</div>
+</div>
+<div class="sb-note">تقریباً متعادل — قوت‌ها ۵۰٫۵٪ و ضعف‌ها ۴۹٫۵٪ از وزن کل را دارند</div>
+</div>
+        <table><thead><tr><th>عامل داخلی</th><th>وزن اصلی</th><th>وزن نرمال‌شده</th><th>رتبه</th><th>امتیاز</th></tr></thead><tbody><tr><td class="col-right">وضعیت مالی قوی و جذب سرمایه (قوت)</td><td>0.15</td><td>0.158</td><td>4</td><td>0.63</td></tr><tr><td class="col-right">نرخ ترک خدمت پایین و انضباط (قوت)</td><td>0.08</td><td>0.084</td><td>4</td><td>0.34</td></tr><tr><td class="col-right">توسعه ۱۳ محصول جدید (قوت)</td><td>0.07</td><td>0.074</td><td>3</td><td>0.22</td></tr><tr><td class="col-right">تامین‌کنندگان قابل اعتماد (قوت)</td><td>0.10</td><td>0.105</td><td>3</td><td>0.32</td></tr><tr><td class="col-right">سهم بازار ۱۵٪ رو به افزایش (قوت)</td><td>0.08</td><td>0.084</td><td>3</td><td>0.25</td></tr><tr><td class="col-right">نبود تحقیقات بازار و تبلیغات (ضعف)</td><td>0.12</td><td>0.126</td><td>1</td><td>0.13</td></tr><tr><td class="col-right">نبود امکانات R&D (ضعف)</td><td>0.08</td><td>0.084</td><td>1</td><td>0.08</td></tr><tr><td class="col-right">وقفه در تولید و نبود کنترل مدرن (ضعف)</td><td>0.07</td><td>0.074</td><td>2</td><td>0.15</td></tr><tr><td class="col-right">سیستم تک‌مالکی و گلوگاه تصمیم‌گیری (ضعف)</td><td>0.05</td><td>0.053</td><td>2</td><td>0.11</td></tr><tr><td class="col-right">نبود چارت سازمانی مکتوب (ضعف)</td><td>0.04</td><td>0.042</td><td>2</td><td>0.08</td></tr><tr><td class="col-right">نبود اهداف مالی و بودجه‌ریزی (ضعف)</td><td>0.06</td><td>0.063</td><td>2</td><td>0.13</td></tr><tr><td class="col-right">عدم آموزش IT به کاربران (ضعف)</td><td>0.05</td><td>0.053</td><td>2</td><td>0.11</td></tr></tbody></table>
+        <div class="total-row-note"><strong>مجموع:</strong> وزن اصلی ۰٫۹۵ | وزن نرمال ۱٫۰۰ | امتیاز کل IFE = <strong>2.54</strong></div>
+        <div class="note-box"><strong>یادداشت بازنگری:</strong> مجموع وزن‌های جدول اصلی ۰٫۹۵ بود؛ برای رعایت قاعده استاندارد IFE (مجموع وزن = ۱٫۰۰) وزن‌ها به‌تناسب نرمال‌شده و امتیاز کل از ۲٫۴۱ ÷ ۰٫۹۵ = <strong>۲٫۵۴</strong> به‌دست آمد (نسخه قبلی ۲٫۵۶ اعلام می‌کرد که با جمع سطرهای جدول سازگار نبود). رتبه‌ها بدون تغییر مانده‌اند. این تغییر در جایگاه سلول ماتریس IE (بخش ۷) بی‌اثر است.</div>
+    </div>
+
+    <!-- 6. EFE -->
+    <div class="container" id="efe">
+        <header><h1>۶. ارزیابی عوامل خارجی (EFE)</h1></header>
+        <div class="summary-box efe-box">
+            <div class="score-circle">2.00</div>
+            <div><strong>تحلیل EFE (بازمحاسبه‌شده):</strong> پاسخ سازمان به محیط خارجی در <strong>مرز پایینِ بازه متوسط</strong> قرار گرفته است (دقیقاً ۲٫۰۰). سازمان در برابر تهدیدهای اقتصاد کلان (دلار، مالیات، قاچاق) پاسخ ضعیفی دارد (رتبه ۱ و ۲) و از فرصت‌های فناورانه نیز — به دلیل نبود اتوماسیون و R&D — فقط به‌اندازه متوسط بهره می‌برد. فاصله تا نوار «ضعیف» (زیر ۲٫۰۰) تنها صفر است؛ بهبود پاسخ به تهدیدها اولویت فوری است.</div>
+        </div>
+        <div class="sb-row">
+<div class="sb-head"><span class="sb-name">سهم وزنی فرصت‌ها در برابر تهدید‌ها</span></div>
+<div class="sb-track">
+<div class="sb-seg o" style="width:42.11%" title="فرصت: 42.1%">42٪</div>
+<div class="sb-seg t" style="width:57.89%" title="تهدید: 57.9%">58٪</div>
+</div>
+<div class="sb-note">۵۸٪ وزن EFE روی تهدیدها متمرکز است — سازمان باید بیشتر «دفاع» کند تا «حمله»</div>
+</div>
+        <table><thead><tr><th>عامل خارجی</th><th>وزن اصلی</th><th>وزن نرمال‌شده</th><th>رتبه</th><th>امتیاز</th></tr></thead><tbody><tr><td class="col-right">استفاده از فناوری بی‌سیم و اتوماسیون (فرصت) *</td><td>0.10</td><td>0.132</td><td>2</td><td>0.26</td></tr><tr><td class="col-right">تغییر نگرش به سمت کیفیت و مسئولیت اجتماعی (فرصت)</td><td>0.08</td><td>0.105</td><td>3</td><td>0.32</td></tr><tr><td class="col-right">پراکندگی و ضعف چانه‌زنی تامین‌کنندگان (فرصت) *</td><td>0.08</td><td>0.105</td><td>3</td><td>0.32</td></tr><tr><td class="col-right">سد ورود نسبتاً بالای صنعت (فرصت)</td><td>0.06</td><td>0.079</td><td>3</td><td>0.24</td></tr><tr><td class="col-right">نوسانات شدید ارزش دلار (تهدید)</td><td>0.12</td><td>0.158</td><td>1</td><td>0.16</td></tr><tr><td class="col-right">سیاست‌های مالی دولت و مالیات (تهدید)</td><td>0.10</td><td>0.132</td><td>1</td><td>0.13</td></tr><tr><td class="col-right">رقابت بسیار شدید در صنعت قنادی (تهدید)</td><td>0.10</td><td>0.132</td><td>2</td><td>0.26</td></tr><tr><td class="col-right">تغییرات زیست‌محیطی مؤثر بر تامین (تهدید)</td><td>0.08</td><td>0.105</td><td>2</td><td>0.21</td></tr><tr><td class="col-right">قاچاق کالا و احزاب سیاسی (تهدید) *</td><td>0.04</td><td>0.053</td><td>2</td><td>0.11</td></tr></tbody></table>
+        <div class="total-row-note"><strong>مجموع:</strong> وزن اصلی ۰٫۷۶ | وزن نرمال ۱٫۰۰ | امتیاز کل EFE = <strong>2.0</strong></div>
+        <div class="note-box"><strong>یادداشت بازنگری (سه اصلاح مستند):</strong>
+        <br>(۱) <strong>خطای عددی وزن:</strong> وزن عامل «قاچاق کالا و احزاب سیاسی» ۰٫۱۴ ثبت شده بود؛ اما سطر مجموع نسخه قبلی (۰٫۷۶) و امتیاز کل ۲٫۲۶ تنها با وزن ۰٫۰۴ سازگار است (۱٫۷۲ ÷ ۰٫۷۶ = ۲٫۲۶)؛ لذا ۰٫۰۴ ملاک قرار گرفت.
+        <br>(۲) <strong>اصلاح رتبه فرصت اول:</strong> رتبه پاسخ به فرصت «فناوری بی‌سیم و اتوماسیون» از ۴ (عالی) به ۲ (متوسط) اصلاح شد؛ رتبه ۴ با شواهد داخلی در تضاد آشکار بود: IFE نبود کنترل مدرن تولید (رتبه ۲)، نبود امکانات R&D (رتبه ۱)، ضعف‌های ممیزی IT و متن خودِ تحلیل قبلی («عدم استفاده کامل از فرصت‌های تکنولوژیک»). سازمان در حال آغاز مسیر فناوری است (دستگاه اختصاصی اصفهان، طرح ERP)، نه به‌کارگیری عالی آن.
+        <br>(۳) <strong>نرمال‌سازی وزن‌ها</strong> به مجموع ۱٫۰۰ → امتیاز کل: ۱٫۵۲ ÷ ۰٫۷۶ = <strong>۲٫۰۰</strong>.
+        <br>نتیجه: EFE از ۲٫۲۶ به ۲٫۰۰ کاهش یافت — پاسخ سازمان به محیط، ضعیف‌تر از تصور نسخه قبل است.</div>
+    </div>
+
+    <!-- 7. IE -->
+    <div class="container" id="ie">
+        <header><h1>۷. ماتریس داخلی-خارجی (IE)</h1></header>
+        <div class="summary-box"><strong>تحلیل موقعیت:</strong> با تلاقی امتیاز بازمحاسبه‌شده داخلی (IFE = 2.54 → بند متوسط) و خارجی (EFE = 2.00 → بند متوسط)، سازمان در <strong>سلول V (حفظ و نگه داشتن)</strong> قرار می‌گیرد. این سلول استراتژی‌های محافظه‌کارانه و تثبیت‌کننده را توصیه می‌کند — توسعه محصول و نفوذ در بازار — نه سرمایه‌گذاری تهاجمی پرریسک. توجه: EFE دقیقاً روی مرز پایین بند متوسط (۲٫۰۰) ایستاده است؛ اگر پاسخ سازمان به تهدیدهای اقتصادی بهبود نیابد، در محاسبات بعدی ممکن است به سلول VIII (برداشت) سقوط کند.</div>
+        <div class="ie-wrap">
+            <div class="ie-y">امتیاز IFE (داخلی) ← قوی در بالا</div>
+            <div class="ie-matrix"><div class="ie-cell grow" style="grid-column:1;grid-row:1"><div class="ie-num">I</div><div class="ie-lbl">رشد و ساخت</div></div><div class="ie-cell grow" style="grid-column:2;grid-row:1"><div class="ie-num">II</div><div class="ie-lbl">رشد و ساخت</div></div><div class="ie-cell hold" style="grid-column:3;grid-row:1"><div class="ie-num">III</div><div class="ie-lbl">نگه داشتن</div></div><div class="ie-cell grow" style="grid-column:1;grid-row:2"><div class="ie-num">IV</div><div class="ie-lbl">رشد و ساخت</div></div><div class="ie-cell hold" style="grid-column:2;grid-row:2"><div class="ie-num">V</div><div class="ie-lbl">نگه داشتن</div><div class="ie-marker">● سان‌سیتی<br>IFE 2.54 | EFE 2.00</div></div><div class="ie-cell harvest" style="grid-column:3;grid-row:2"><div class="ie-num">VI</div><div class="ie-lbl">برداشت</div></div><div class="ie-cell hold" style="grid-column:1;grid-row:3"><div class="ie-num">VII</div><div class="ie-lbl">نگه داشتن</div></div><div class="ie-cell harvest" style="grid-column:2;grid-row:3"><div class="ie-num">VIII</div><div class="ie-lbl">برداشت</div></div><div class="ie-cell harvest" style="grid-column:3;grid-row:3"><div class="ie-num">IX</div><div class="ie-lbl">برداشت</div></div>
+                <div class="ie-x" style="grid-row:4;grid-column:1">EFE قوی (3.0-4.0)</div>
+                <div class="ie-x" style="grid-row:4;grid-column:2">EFE متوسط (2.0-2.9)</div>
+                <div class="ie-x" style="grid-row:4;grid-column:3">EFE ضعیف (1.0-1.9)</div>
+            </div>
+        </div>
+        <h3>استراتژی‌های توصیه‌شده در سلول V (Hold and Maintain)</h3>
+        <table><thead><tr><th>نوع استراتژی</th><th>توضیح و اجرا در قنادی سان سیتی</th></tr></thead><tbody><tr><td class="col-right">نفوذ در بازار (Market Penetration)</td><td class="col-right">افزایش سهم بازار با محصولات فعلی (شیرینی و کیک) از طریق کانال‌های جدید توزیع (اسنپ‌فود و سوپرمارکت‌ها) و بهبود بسته‌بندی، بدون تغییر رادیکال در خط محصول.</td></tr><tr><td class="col-right">توسعه محصول (Product Development)</td><td class="col-right">توسعه محصولات جدید برای مشتریان فعلی؛ ایجاد واحد R&D کوچک برای طراحی کیک‌های مدرن متناسب با ذائقه نسل جوان و کاهش وابستگی خلاقیت به بنیان‌گذار.</td></tr><tr><td class="col-right">توسعه بازار (Market Development)</td><td class="col-right">واگذاری نمایندگی فروش در استان‌های شمالی با استفاده از برند قوی بابل، بدون سرمایه‌گذاری سنگین در فضای فیزیکی.</td></tr></tbody></table>
+        <div class="note-box"><strong>یادداشت بازنگری:</strong> پس از اصلاح محاسبات IFE (۲٫۵۶→۲٫۵۴) و EFE (۲٫۲۶→۲٫۰۰)، موقعیت استراتژیک سازمان در همان سلول V باقی ماند؛ یعنی جمع‌بندی راهبردی نسخه قبل (استراتژی‌های تثبیت‌کننده) معتبر است، اما حاشیه امنیت آن بسیار باریک‌تر شد. رتبه‌بندی ریسک: (۱) پاسخ به نوسان دلار و تورم، (۲) ساخت واحد R&D، (۳) برون‌سپاری بازاریابی دیجیتال.</div>
+    </div>
+
+    <!-- 8. SWOT -->
+    <div class="container" id="swot">
+        <header><h1>۸. ماتریس SWOT و استراتژی‌ها</h1></header>
+        <div class="swot-grid">
+            <div class="swot-box s-box"><h3>قوت‌ها (S)</h3>
+                <ul>
+                    <li>وضعیت مالی قوی و توان جذب سرمایه (کوتاه و بلندمدت)</li>
+                    <li>برند ممتاز در بابل و وفاداری مشتری — <em>دارایی برند تاریخی</em></li>
+                    <li>طراحی محصولات منحصربفرد متکی به خلاقیت بنیان‌گذار (۱۳ محصول جدید)</li>
+                    <li>قدرت چانه‌زنی با تامین‌کنندگان (پراکندگی صنعت تامین)</li>
+                    <li>سهم بازار ۱۵٪ رو به افزایش؛ کیفیت بهتر از رقبا</li>
+                </ul>
+            </div>
+            <div class="swot-box w-box"><h3>ضعف‌ها (W)</h3>
+                <ul>
+                    <li>نبود <em>وظیفه سازمان‌یافته بازاریابی</em> (تحقیقات بازار، تبلیغات، نیروی فروش) — برند قوی است اما مدیریت آن ضعیف است</li>
+                    <li>نبود واحد R&D مستقل — خلاقیت وابسته به بنیان‌گذار است (ریسک تمرکز بر یک نفر)</li>
+                    <li>نبود اتوماسیون و کنترل کیفیت مدرن در تولید (وقفه‌های تولید)</li>
+                    <li>ساختار تک‌مالکی و گلوگاه تصمیم‌گیری؛ نبود چارت سازمانی مکتوب</li>
+                    <li>نبود سیستم ارسال مکانیزه (لجستیک خروجی)</li>
+                </ul>
+            </div>
+            <div class="swot-box o-box"><h3>فرصت‌ها (O)</h3>
+                <ul>
+                    <li>رشد فناوری و اتوماسیون (بُعد ET کلان: ۹۳٪ فرصت)</li>
+                    <li>تغییر نگرش بازار به سمت کیفیت و مسئولیت اجتماعی</li>
+                    <li>پلتفرم‌های فروش آنلاین و تحویل (اسنپ‌فود)</li>
+                    <li>سد ورود نسبتاً بالای صنعت (صرفه مقیاس و سرمایه کلان)</li>
+                </ul>
+            </div>
+            <div class="swot-box t-box"><h3>تهدیدها (T)</h3>
+                <ul>
+                    <li>نوسانات شدید دلار و تورم (وزن ۱۰۰ در محیط کلان)</li>
+                    <li>سیاست‌های مالیاتی دولت و احزاب سیاسی</li>
+                    <li>رقابت بسیار شدید و تعداد بالای رقبا (ECO: −۵۰)</li>
+                    <li>تغییرات زیست‌محیطی مؤثر بر تامین مواد خام</li>
+                    <li>قاچاق کالا و محصولات بازرگانی ارزان</li>
+                </ul>
+            </div>
+        </div>
+        <div class="note-box"><strong>یادداشت سازگاری (رفع تضاد ظاهری):</strong> در نسخه قبل «توسعه محصولات منحصربفرد» به‌عنوان قوت و «نبود واحد R&D» به‌عنوان ضعف کنار هم بی‌تناقض به نظر می‌رسیدند اما رابطه‌شان روشن نبود. مستندات زنجیره ارزش و ممیزی داخلی نشان می‌دهد این دو هم‌زمان صادق‌اند: <strong>خلاقیت و طراحی منحصربفرد از شخص بنیان‌گذار سرچشمه می‌گیرد، نه واحد R&D نظام‌مند.</strong> لذا قوت به «متکی به خلاقیت بنیان‌گذار» و ضعف به «وابستگی خلاقیت به یک نفر (ریسک تمرکز)» بازنویسی شد. به همین ترتیب «برند ممتاز» (دارایی) از «ضعف بازاریابی» (وظیفه سازمان‌یافته) تفکیک شد — برند میراثی است که وجود دارد؛ بازاریابی فعالیتی است که انجام نمی‌شود.</div>
+        <h3>استراتژی‌های چهارگانه (TOWS)</h3>
+        <div class="strat-card"><span class="strat-tag so">SO</span><div class="strat-content"><strong>توسعه فروش از طریق شبکه‌های مدرن:</strong> با استفاده از بنیه مالی و محصولات منحصربفرد، محصولات با بسته‌بندی متمایز در سوپرمارکت‌ها و پلتفرم‌های آنلاین توزیع شود.</div></div>
+        <div class="strat-card"><span class="strat-tag wo">WO</span><div class="strat-content"><strong>دیجیتالی‌شدن و استقرار اتوماسیون:</strong> برای رفع ضعف بازاریابی و کنترل تولید، ERP و فروش آنلاین مستقر شود و واحد R&D کوچک برای تطبیق ذائقه نسل جدید ایجاد شود — پاسخ به ۹۳٪ فرصتی بودن بُعد فناوری.</div></div>
+        <div class="strat-card"><span class="strat-tag st">ST</span><div class="strat-content"><strong>مدیریت زنجیره تامین مقاومتی:</strong> با استفاده از قدرت چانه‌زنی، قراردادهای بلندمدت با فرمول قیمت روز با تامین‌کنندگان بسته شود تا از نوسانات دلار در مواد اولیه در امان بمانیم.</div></div>
+        <div class="strat-card"><span class="strat-tag wt">WT</span><div class="strat-content"><strong>اصلاح ساختار و بقا:</strong> گلوگاه تک‌مالکی رفع و تفویض اختیار به مدیر میانی صورت گیرد تا سرعت واکنش به تورم و تغییرات بازار بالا برود؛ چارت سازمانی مکتوب و اهداف مالی تعیین شود.</div></div>
+    </div>
+
+    <!-- 9. VC -->
+    <div class="container" id="vc">
+        <header><h1>۹. زنجیره ارزش و تلفیق با حسابرسی داخلی</h1></header>
+        <table>
+            <thead><tr><th>فعالیت</th><th>وضعیت فعلی</th><th>پیامد</th></tr></thead>
+            <tbody>
+                <tr><td class="col-right">لجستیک ورودی</td><td class="col-right">تامین سریع، انبارگردانی دقیق (کسری صفر)</td><td>قوت — سرعت و قیمت مناسب</td></tr>
+                <tr><td class="col-right">عملیات (تولید)</td><td class="col-right">تجهیزات عالی اما نبود QC و اتوماسیون (دستی)</td><td>ضعف — افزایش بهای تمام‌شده</td></tr>
+                <tr><td class="col-right">لجستیک خروجی</td><td class="col-right">نبود سیستم ارسال، الزام به حضور مشتری</td><td>ضعف — از دست دادن سهم بازار</td></tr>
+                <tr><td class="col-right">بازاریابی و فروش</td><td class="col-right">برند قوی در بابل، اما نبود نیروی فروش و تبلیغات</td><td>قوت/ضعف</td></tr>
+                <tr><td class="col-right">تحقیق و توسعه</td><td class="col-right">خلاقیت منحصر به آقای میرحسینی، نبود تیم مستقل</td><td>ضعف — ریسک وابستگی به یک شخص</td></tr>
+            </tbody>
+        </table>
+        <h2>تلفیق زنجیره ارزش با روش حسابرسی داخلی</h2>
+        <p class="lead">این دو ابزار به این ترتیب ترکیب شده‌اند: <strong>حلقه‌های زنجیره ارزش به‌عنوان «واحد تحلیل» و حوزه‌های ۹گانه ممیزی داخلی به‌عنوان «سنجه عملکرد» هر حلقه</strong> به کار رفته‌اند. ممیزی داخلی برای هر حوزه، وزن قوت/ضعف استخراج می‌کند؛ سپس هر فعالیت زنجیره به حوزه(های) مرتبط ممیزی نگاشت می‌شود و جمع وزن قوت/ضعف آن حوزه، «وضعیت ممیزی‌شده» آن حلقه از زنجیره را می‌سازد. بدین ترتیب ضعف‌های کیفی زنجیره ارزش (مثلاً «نبود QC») با شواهد کمّی ممیزی (۲ ضعف حوزه تولید با وزن ۲) پشتیبانی می‌شوند و اولویت اقدام هر حلقه مستند می‌گردد.</p>
+        <table><thead><tr><th>فعالیت زنجیره ارزش</th><th>حوزه(های) ممیزی نگاشت‌شده</th><th>نتیجه ممیزی (وزن قوت/ضعف)</th><th>وضعیت</th><th>اقدام پیشنهادی</th></tr></thead><tbody><tr><td class="col-right">لجستیک ورودی (تامین و انبار)</td><td class="col-right">تولید و عملیات + مالی</td><td class="col-right">قوت ۲۶ از ۳۰؛ تامین‌کنندگان قابل اعتماد = منبع ممتاز</td><td class=""><span class="bdg bdg-s">قوت</span></td><td class="col-right">حفظ قراردادهای بلندمدت با فرمول قیمت روز؛ انبارگردانی دوره‌ای</td></tr><tr><td class="col-right">عملیات (تولید)</td><td class="col-right">تولید و عملیات</td><td class="col-right">قوت غالب؛ اما ۲ ضعف: وقفه فرایند و نبود ابزار برنامه‌ریزی/کنترل مدرن</td><td class=""><span class="bdg bdg-n">قوت با اصلاح</span></td><td class="col-right">استقرار QC و ابزار کنترل تولید؛ دستگاه اختصاصی اصفهان</td></tr><tr><td class="col-right">لجستیک خروجی (ارسال و توزیع)</td><td class="col-right">— بدون حوزه ممیزی</td><td class="col-right">این حلقه در پرسش‌نامه ممیزی پوشش داده نشده است (شکاف ممیزی)</td><td class=""><span class="bdg bdg-w">ضعف (غایب)</span></td><td class="col-right">افزودن حوزه ممیزی لجستیک در دوره بعد؛ هم‌زمان: اسنپ‌فود و سرویس تا درب خودرو</td></tr><tr><td class="col-right">بازاریابی و فروش</td><td class="col-right">بازاریابی</td><td class="col-right">۹ قوت / ۹ ضعف — نامتوازن‌ترین حوزه؛ ۸ ضعف عملکردی (تحقیقات بازار، تبلیغات، نیروی فروش)</td><td class=""><span class="bdg bdg-w">ضعف عملکردی</span></td><td class="col-right">برون‌سپاری استراتژیک دیجیتال مارکتینگ؛ واحد فروش کوچک</td></tr><tr><td class="col-right">تحقیق و توسعه</td><td class="col-right">تحقیق و توسعه + مدیران ارشد</td><td class="col-right">۵ قوت / ۵ ضعف / ۱ بی‌طبقه؛ امکانات و شایستگی R&D ناکافی</td><td class=""><span class="bdg bdg-w">ضعف نسبی</span></td><td class="col-right">ایجاد واحد R&D مستقل کوچک؛ آموزش تیم؛ مستندسازی خلاقیت بنیان‌گذار</td></tr><tr><td class="col-right">زیرساخت (مالی، مدیریت، IT، فرهنگ، ساختار)</td><td class="col-right">مالی + مدیریت + IT + فرهنگ + ساختار</td><td class="col-right">مالی ۱۳/۴ قوت، مدیریت ۹٫۶/۰٫۴ قوت، فرهنگ ۴/۰ قوت؛ IT ۶٫۷/۱٫۳ قوت نسبی؛ ساختار ۱/۳ ضعف</td><td class=""><span class="bdg bdg-n">قوت، ساختار ضعیف</span></td><td class="col-right">تصویب چارت سازمانی مکتوب و تفویض اختیار؛ آموزش IT کاربران</td></tr></tbody></table>
+        <div class="note-box"><strong>یافته تلفیق:</strong> مهم‌ترین خروجی این نگاشت، <strong>شکاف ممیزی لجستیک خروجی</strong> است: این حلقه — که زنجیره ارزش آن را «ضعف بحرانی» معرفی می‌کند — در پرسش‌نامه ۹۶گانه هیچ حوزه ممیزی اختصاصی ندارد. توصیه می‌شود در دوره ممیزی بعدی، حوزه «لجستیک و توزیع» (ارسال، انبار محصول نهایی، تحویل) اضافه شود تا حلقه خروجی زنجیره نیز مانند سایر حلقه‌ها با معیار کمّی سنجیده شود؛ تا آن زمان، شواهد ضعف آن از IFE و زنجیره ارزش تأمین می‌شود.</div>
+    </div>
+
+    <!-- 10. Stakeholders -->
+    <div class="container" id="stake">
+        <header><h1>۱۰. تحلیل ذی‌نفعان و برون‌سپاری</h1></header>
+        <h2>ماتریس قدرت-علاقه: جدول کامل ذی‌نفعان</h2>
+        <p>۱۵ ذی‌نفع شناسایی‌شده بر اساس قدرت (توان تأثیرگذاری بر تصمیمات/عملکرد سازمان) و علاقه (میزان اثرپذیری/درگیر بودن با سازمان) در چهار دسته طبقه‌بندی شده‌اند و برای هر ذی‌نفع، استراتژی ارتباطی اختصاصی تعریف شده است.</p>
+        <table><thead><tr><th>ذی‌نفع</th><th>قدرت</th><th>علاقه</th><th>دسته (استراتژی کلان)</th><th>استراتژی ارتباطی اختصاصی</th></tr></thead><tbody><tr><td class="col-right">اتحادیه/صنف (قدرت قیمت‌گذاری)</td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">مدیریت تنگاتنگ</span></td><td class="col-right">مشارکت فعال در جلسات اتحادیه؛ پیگیری رقابت ناسالم و توسعه فیزیکی؛ رایزنی برای حمایت صنفی از توسعه فرانچایز.</td></tr><tr><td class="col-right">اداره بهداشت و اماکن</td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">مدیریت تنگاتنگ</span></td><td class="col-right">رعایت مستمر استانداردها و دعوت دوره‌ای به بازرسی؛ تبدیل رابطه نظارتی به اعتماد؛ نمایش گواهی‌ها به‌عنوان مزیت برند.</td></tr><tr><td class="col-right">اداره مالیات و تعزیرات</td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">مدیریت تنگاتنگ</span></td><td class="col-right">تسویه به‌موقع و شفاف؛ برون‌سپاری حسابداری مالیاتی به مشاور؛ برنامه‌ریزی مالیاتی سالانه برای پیشگیری از جریمه.</td></tr><tr><td class="col-right">سهامداران/مالک (آقای میرحسینی)</td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">مدیریت تنگاتنگ</span></td><td class="col-right">جلسات منظم مدیران؛ تفویض اختیار به مدیر میانی برای رفع گلوگاه تصمیم‌گیری؛ تصویب سند چارت سازمانی مکتوب.</td></tr><tr><td class="col-right">تامین‌کنندگان استراتژیک مواد و کالا</td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-s">مدیریت تنگاتنگ</span></td><td class="col-right">قرارداد بلندمدت با فرمول قیمت روزِ ارسال و گزارش حساب معین؛ معرفی تامین‌کننده پشتیبان برای ریسک بدقولی.</td></tr><tr><td class="col-right">اداره کار و وزارت صمت</td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-n">راضی نگه‌داشتن</span></td><td class="col-right">پرداخت به‌موقع حقوق و بیمه؛ رعایت کامل قانون کار و استانداردها برای پیشگیری از جریمه و توقف فعالیت.</td></tr><tr><td class="col-right">بیمه</td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-n">راضی نگه‌داشتن</span></td><td class="col-right">پوشش کامل بیمه دارایی، مسئولیت و آتش‌سوزی؛ بازبینی سالانه پوشش‌ها همگام با توسعه تجهیزات.</td></tr><tr><td class="col-right">مشتریان ملی/بین‌المللی (در صورت توسعه)</td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-n">راضی نگه‌داشتن</span></td><td class="col-right">استانداردسازی کیفیت و بسته‌بندی صادراتی؛ ایجاد کانال ارتباطی و ثبت سفارش آنلاین برای مشتریان خارج از بابل.</td></tr><tr><td class="col-right">مشاوران</td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-o">آگاه نگه‌داشتن</span></td><td class="col-right">جلسات توجیهی منظم؛ جلب رضایت در واگذاری دیجیتال مارکتینگ؛ استفاده نظام‌مند از بازخورد آن‌ها در تصمیمات توسعه‌ای.</td></tr><tr><td class="col-right">کارکنان و کارگران</td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-o">آگاه نگه‌داشتن</span></td><td class="col-right">جلسات توجیهی تغییرات تولید؛ سیستم تشویق/جریمه شفاف؛ آموزش IT به کاربران؛ مسیر رشد شغلی برای کاهش ترک خدمت ناخواسته.</td></tr><tr><td class="col-right">جامعه محلی و همسایگان</td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-s">زیاد</span></td><td class=""><span class="bdg bdg-o">آگاه نگه‌داشتن</span></td><td class="col-right">فعالیت‌های مسئولیت اجتماعی محلی (حمایت از مدارس/مناسبت‌ها)؛ مدیریت پسماند، صدا و ترافیک اطراف فروشگاه.</td></tr><tr><td class="col-right">فعالان محیط زیست</td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-t">مانیتورینگ</span></td><td class="col-right">مانیتورینگ دوره‌ای انتظارات؛ حرکت پیشگیرانه به بسته‌بندی قابل بازیافت و کاهش پسماند تولید.</td></tr><tr><td class="col-right">صاحبان فناوری</td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-t">مانیتورینگ</span></td><td class="col-right">مانیتورینگ فناوری‌های نو تولید قنادی؛ همکاری موردی (مانند ساخت دستگاه اختصاصی در اصفهان).</td></tr><tr><td class="col-right">خدمات IT پشتیبان</td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-t">مانیتورینگ</span></td><td class="col-right">قرارداد سطح خدمات (SLA) مشخص؛ ارزیابی عملکرد دوره‌ای؛ هم‌راستا با برون‌سپاری IT سایت و فروش آنلاین.</td></tr><tr><td class="col-right">مصرف‌کننده نهایی (محدوده‌های دور)</td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-w">کم</span></td><td class=""><span class="bdg bdg-t">مانیتورینگ</span></td><td class="col-right">مانیتورینگ ترجیحات؛ حضور آنلاین سبک (شبکه‌های اجتماعی) و سنجش تقاضای ارسال تا مناطق دورتر.</td></tr></tbody></table>
+        <h2>نمای گرید قدرت-علاقه</h2>
+        <div class="stake-grid"><div class="quad-box q-close"><h3>مدیریت تنگاتنگ (قدرت زیاد، علاقه زیاد)</h3><ul><li>اتحادیه/صنف (قدرت قیمت‌گذاری)</li><li>اداره بهداشت و اماکن</li><li>اداره مالیات و تعزیرات</li><li>سهامداران/مالک (آقای میرحسینی)</li><li>تامین‌کنندگان استراتژیک مواد و کالا</li></ul></div><div class="quad-box q-keep"><h3>راضی نگه‌داشتن (قدرت زیاد، علاقه کم)</h3><ul><li>اداره کار و وزارت صمت</li><li>بیمه</li><li>مشتریان ملی/بین‌المللی (در صورت توسعه)</li></ul></div><div class="quad-box q-inform"><h3>آگاه نگه‌داشتن (قدرت کم، علاقه زیاد)</h3><ul><li>مشاوران</li><li>کارکنان و کارگران</li><li>جامعه محلی و همسایگان</li></ul></div><div class="quad-box q-monitor"><h3>مانیتورینگ (قدرت کم، علاقه کم)</h3><ul><li>فعالان محیط زیست</li><li>صاحبان فناوری</li><li>خدمات IT پشتیبان</li><li>مصرف‌کننده نهایی (محدوده‌های دور)</li></ul></div></div>
+        <div class="note-box"><strong>یافته کلیدی مشاوره‌ای:</strong> حضور در «اتحادیه/صنف» با قدرت و علاقه زیاد (مدیریت تنگاتنگ) به سازمان امکان می‌دهد استراتژی توسعه بازار (از جمله فرانچایز) را با حمایت نهادهای قانونی پیش ببرد. همچنین برون‌سپاری دیجیتال مارکتینگ به «مشاوران» (علاقه زیاد، قدرت تصمیم کم — آگاه نگه‌داشتن) باید با آگاه‌سازی و جلب رضایت آنان همراه باشد تا بهترین نتیجه حاصل شود.</div>
+        <h2>ماتریس تصمیم‌گیری برون‌سپاری (اهمیت استراتژیک × توانمندی داخلی)</h2>
+        <p>هدف: تعیین اینکه کدام فعالیت‌ها باید در داخل حفظ شوند، کدام استراتژیک به متخصصان خارج سپرده شوند و کدام‌ها صرفاً به دلیل عدم صرفه اقتصادی برون‌سپاری شوند.</p>
+        <table><thead><tr><th>فعالیت / فرآیند</th><th>اهمیت استراتژیک</th><th>توانمندی داخلی</th><th>تصمیم</th><th>توضیحات و اقدام اجرایی</th></tr></thead><tbody><tr><td class="col-right">تولید شیرینی و کیک، کنترل کیفیت، توسعه محصول جدید</td><td class="col-right">زیاد</td><td class="col-right">زیاد</td><td class=""><span class="bdg bdg-core">حفظ در داخل (Core)</span></td><td class="col-right">هسته اصلی کسب‌وکار؛ ماشین‌آلات و دانش باید در داخل ارتقا یابد (مانند دستگاه اختصاصی اصفهان).</td></tr><tr><td class="col-right">تامین مواد اولیه و فروش حضوری</td><td class="col-right">زیاد</td><td class="col-right">زیاد</td><td class=""><span class="bdg bdg-core">حفظ در داخل (Core)</span></td><td class="col-right">مرباجات داخلی، تامین متمرکز و فروش مستقیم برای حفظ کیفیت و برند.</td></tr><tr><td class="col-right">طراحی بسته‌بندی، دیجیتال مارکتینگ و مدیریت شبکه‌های اجتماعی</td><td class="col-right">زیاد</td><td class="col-right">کم</td><td class=""><span class="bdg bdg-strat">برون‌سپاری استراتژیک</span></td><td class="col-right">با توجه به ضعف IFE در بازاریابی، به آژانس‌های تخصصی واگذار شود زیر نظر مستقیم مدیریت.</td></tr><tr><td class="col-right">لجستیک و پخش، فروش آنلاین، خدمات IT و سایت</td><td class="col-right">زیاد</td><td class="col-right">کم</td><td class=""><span class="bdg bdg-strat">برون‌سپاری استراتژیک</span></td><td class="col-right">همکاری با پلتفرم‌هایی مثل اسنپ‌فود (رفع ضعف لجستیک خروجی) و شرکت‌های نرم‌افزاری.</td></tr><tr><td class="col-right">تولید جعبه بسته‌بندی، تبلیغات محیطی</td><td class="col-right">کم</td><td class="col-right">کم</td><td class=""><span class="bdg bdg-oper">برون‌سپاری عملیاتی</span></td><td class="col-right">کارکردهای پشتیبان؛ خرید آماده یا واگذاری به پیمانکاران ارزان‌تر.</td></tr><tr><td class="col-right">محصولات بازرگانی، حسابداری و مالی (بخشی)</td><td class="col-right">کم</td><td class="col-right">کم</td><td class=""><span class="bdg bdg-oper">برون‌سپاری/ترکیبی</span></td><td class="col-right">محصولات صرفه اقتصادی ندارند (خرید آماده)؛ حسابداری مالیاتی به مشاور خارجی سپرده شده است.</td></tr></tbody></table>
+    </div>
+
+    </div>
+
+
+</body></html>
+			</body>
+		</html>
